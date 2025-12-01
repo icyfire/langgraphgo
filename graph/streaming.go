@@ -63,8 +63,8 @@ func NewStreamingListener(eventChan chan<- StreamEvent, config StreamConfig) *St
 	}
 }
 
-// OnNodeEvent implements the NodeListener interface
-func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, state interface{}, err error) {
+// emitEvent sends an event to the channel handling backpressure
+func (sl *StreamingListener) emitEvent(event StreamEvent) {
 	// Check if listener is closed
 	sl.mutex.RLock()
 	if sl.closed {
@@ -73,18 +73,9 @@ func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nod
 	}
 	sl.mutex.RUnlock()
 
-	streamEvent := StreamEvent{
-		Timestamp: time.Now(),
-		NodeName:  nodeName,
-		Event:     event,
-		State:     state,
-		Error:     err,
-		Metadata:  make(map[string]interface{}),
-	}
-
 	// Try to send event without blocking
 	select {
-	case sl.eventChan <- streamEvent:
+	case sl.eventChan <- event:
 		// Event sent successfully
 	default:
 		// Channel is full
@@ -93,6 +84,106 @@ func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nod
 		}
 		// Drop the event if backpressure handling is disabled or channel is still full
 	}
+}
+
+// OnNodeEvent implements the NodeListener interface
+func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, state interface{}, err error) {
+	streamEvent := StreamEvent{
+		Timestamp: time.Now(),
+		NodeName:  nodeName,
+		Event:     event,
+		State:     state,
+		Error:     err,
+		Metadata:  make(map[string]interface{}),
+	}
+	sl.emitEvent(streamEvent)
+}
+
+// CallbackHandler implementation
+
+func (sl *StreamingListener) OnChainStart(ctx context.Context, serialized map[string]interface{}, inputs map[string]interface{}, runID string, parentRunID *string, tags []string, metadata map[string]interface{}) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventChainStart,
+		Metadata:  metadata,
+		State:     inputs,
+	})
+}
+
+func (sl *StreamingListener) OnChainEnd(ctx context.Context, outputs map[string]interface{}, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventChainEnd,
+		State:     outputs,
+	})
+}
+
+func (sl *StreamingListener) OnChainError(ctx context.Context, err error, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     NodeEventError, // Or specific ChainError?
+		Error:     err,
+	})
+}
+
+func (sl *StreamingListener) OnLLMStart(ctx context.Context, serialized map[string]interface{}, prompts []string, runID string, parentRunID *string, tags []string, metadata map[string]interface{}) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventLLMStart,
+		Metadata:  metadata,
+		State:     prompts,
+	})
+}
+
+func (sl *StreamingListener) OnLLMEnd(ctx context.Context, response interface{}, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventLLMEnd,
+		State:     response,
+	})
+}
+
+func (sl *StreamingListener) OnLLMError(ctx context.Context, err error, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     NodeEventError,
+		Error:     err,
+	})
+}
+
+func (sl *StreamingListener) OnToolStart(ctx context.Context, serialized map[string]interface{}, inputStr string, runID string, parentRunID *string, tags []string, metadata map[string]interface{}) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventToolStart,
+		Metadata:  metadata,
+		State:     inputStr,
+	})
+}
+
+func (sl *StreamingListener) OnToolEnd(ctx context.Context, output string, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     EventToolEnd,
+		State:     output,
+	})
+}
+
+func (sl *StreamingListener) OnToolError(ctx context.Context, err error, runID string) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     NodeEventError,
+		Error:     err,
+	})
+}
+
+func (sl *StreamingListener) OnRetrieverStart(ctx context.Context, serialized map[string]interface{}, query string, runID string, parentRunID *string, tags []string, metadata map[string]interface{}) {
+	// Map to custom or tool event?
+}
+
+func (sl *StreamingListener) OnRetrieverEnd(ctx context.Context, documents []interface{}, runID string) {
+}
+
+func (sl *StreamingListener) OnRetrieverError(ctx context.Context, err error, runID string) {
 }
 
 // Close marks the listener as closed to prevent sending to closed channels
@@ -179,8 +270,13 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState interface{
 			close(doneChan)
 		}()
 
+		// Create config with streaming listener as callback
+		config := &Config{
+			Callbacks: []CallbackHandler{streamingListener},
+		}
+
 		// Execute the runnable
-		result, err := sr.runnable.Invoke(streamCtx, initialState)
+		result, err := sr.runnable.InvokeWithConfig(streamCtx, initialState, config)
 
 		// Send result or error
 		if err != nil {

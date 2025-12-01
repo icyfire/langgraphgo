@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,12 @@ type StateGraph struct {
 
 	// retryPolicy defines retry behavior for failed nodes
 	retryPolicy *RetryPolicy
+
+	// stateMerger is an optional function to merge states from parallel execution
+	stateMerger StateMerger
+
+	// Schema defines the state structure and update logic
+	Schema StateSchema
 }
 
 // RetryPolicy defines how to handle node failures
@@ -79,6 +86,16 @@ func (g *StateGraph) SetRetryPolicy(policy *RetryPolicy) {
 	g.retryPolicy = policy
 }
 
+// SetStateMerger sets the state merger function for the state graph
+func (g *StateGraph) SetStateMerger(merger StateMerger) {
+	g.stateMerger = merger
+}
+
+// SetSchema sets the state schema for the graph
+func (g *StateGraph) SetSchema(schema StateSchema) {
+	g.Schema = schema
+}
+
 // StateRunnable represents a compiled state graph that can be invoked
 type StateRunnable struct {
 	graph *StateGraph
@@ -97,48 +114,120 @@ func (g *StateGraph) Compile() (*StateRunnable, error) {
 
 // Invoke executes the compiled state graph with the given input state
 func (r *StateRunnable) Invoke(ctx context.Context, initialState interface{}) (interface{}, error) {
-	state := initialState
-	currentNode := r.graph.entryPoint
+	return r.InvokeWithConfig(ctx, initialState, nil)
+}
 
-	for {
-		if currentNode == END {
+// InvokeWithConfig executes the compiled state graph with the given input state and config
+func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState interface{}, config *Config) (interface{}, error) {
+	if config != nil {
+		ctx = WithConfig(ctx, config)
+	}
+
+	state := initialState
+	currentNodes := []string{r.graph.entryPoint}
+
+	for len(currentNodes) > 0 {
+		// Filter out END nodes
+		activeNodes := make([]string, 0, len(currentNodes))
+		for _, node := range currentNodes {
+			if node != END {
+				activeNodes = append(activeNodes, node)
+			}
+		}
+		currentNodes = activeNodes
+
+		if len(currentNodes) == 0 {
 			break
 		}
 
-		node, ok := r.graph.nodes[currentNode]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, currentNode)
-		}
+		// Execute nodes in parallel
+		var wg sync.WaitGroup
+		results := make([]interface{}, len(currentNodes))
+		errorsList := make([]error, len(currentNodes))
 
-		// Execute node with retry logic
-		var err error
-		state, err = r.executeNodeWithRetry(ctx, node, state)
-		if err != nil {
-			return nil, fmt.Errorf("error in node %s: %w", currentNode, err)
-		}
-
-		// First check for conditional edges
-		nextNodeFn, hasConditional := r.graph.conditionalEdges[currentNode]
-		if hasConditional {
-			currentNode = nextNodeFn(ctx, state)
-			if currentNode == "" {
-				return nil, fmt.Errorf("conditional edge returned empty next node from %s", currentNode)
+		for i, nodeName := range currentNodes {
+			node, ok := r.graph.nodes[nodeName]
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeName)
 			}
-			continue
+
+			wg.Add(1)
+			go func(index int, n Node, name string) {
+				defer wg.Done()
+
+				// Execute node with retry logic
+				res, err := r.executeNodeWithRetry(ctx, n, state)
+				if err != nil {
+					errorsList[index] = fmt.Errorf("error in node %s: %w", name, err)
+					return
+				}
+				results[index] = res
+			}(i, node, nodeName)
 		}
 
-		// Then check regular edges
-		foundNext := false
-		for _, edge := range r.graph.edges {
-			if edge.From == currentNode {
-				currentNode = edge.To
-				foundNext = true
-				break
+		wg.Wait()
+
+		// Check for errors
+		for _, err := range errorsList {
+			if err != nil {
+				return nil, err
 			}
 		}
 
-		if !foundNext {
-			return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, currentNode)
+		// Merge results
+		if r.graph.Schema != nil {
+			// If Schema is defined, use it to update state with results
+			for _, res := range results {
+				var err error
+				state, err = r.graph.Schema.Update(state, res)
+				if err != nil {
+					return nil, fmt.Errorf("schema update failed: %w", err)
+				}
+			}
+		} else if r.graph.stateMerger != nil {
+			var err error
+			state, err = r.graph.stateMerger(ctx, state, results)
+			if err != nil {
+				return nil, fmt.Errorf("state merge failed: %w", err)
+			}
+		} else {
+			if len(results) > 0 {
+				state = results[len(results)-1]
+			}
+		}
+
+		// Determine next nodes
+		nextNodesSet := make(map[string]bool)
+
+		for _, nodeName := range currentNodes {
+			// First check for conditional edges
+			nextNodeFn, hasConditional := r.graph.conditionalEdges[nodeName]
+			if hasConditional {
+				nextNode := nextNodeFn(ctx, state)
+				if nextNode == "" {
+					return nil, fmt.Errorf("conditional edge returned empty next node from %s", nodeName)
+				}
+				nextNodesSet[nextNode] = true
+			} else {
+				// Then check regular edges
+				foundNext := false
+				for _, edge := range r.graph.edges {
+					if edge.From == nodeName {
+						nextNodesSet[edge.To] = true
+						foundNext = true
+					}
+				}
+
+				if !foundNext {
+					return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, nodeName)
+				}
+			}
+		}
+
+		// Update currentNodes
+		currentNodes = make([]string, 0, len(nextNodesSet))
+		for node := range nextNodesSet {
+			currentNodes = append(currentNodes, node)
 		}
 	}
 

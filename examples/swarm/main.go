@@ -1,0 +1,232 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/smallnest/langgraphgo/graph"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+// AgentState defines the state for the swarm
+type AgentState struct {
+	Messages []llms.MessageContent
+	Next     string
+}
+
+// HandoffTool defines the tool for handing off control
+var HandoffTool = llms.Tool{
+	Type: "function",
+	Function: &llms.FunctionDefinition{
+		Name:        "handoff",
+		Description: "Hand off control to another agent.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"to": map[string]interface{}{
+					"type": "string",
+					"enum": []string{"Researcher", "Writer"},
+				},
+			},
+			"required": []string{"to"},
+		},
+	},
+}
+
+func main() {
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		log.Fatal("OPENAI_API_KEY not set")
+	}
+
+	model, err := openai.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Define the graph
+	workflow := graph.NewStateGraph()
+
+	// Define Schema
+	schema := graph.NewMapSchema()
+	schema.RegisterReducer("messages", graph.AppendReducer)
+	workflow.SetSchema(schema)
+
+	// Researcher Agent Node
+	workflow.AddNode("Researcher", func(ctx context.Context, state interface{}) (interface{}, error) {
+		mState := state.(map[string]interface{})
+		messages := mState["messages"].([]llms.MessageContent)
+
+		systemPrompt := "You are a researcher. You can search for information. If you need to write a report, hand off to the Writer. If you are done, just say 'I am done'."
+		inputMessages := append([]llms.MessageContent{
+			llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
+		}, messages...)
+
+		resp, err := model.GenerateContent(ctx, inputMessages, llms.WithTools([]llms.Tool{HandoffTool}))
+		if err != nil {
+			return nil, err
+		}
+
+		choice := resp.Choices[0]
+
+		// Check for handoff
+		if len(choice.ToolCalls) > 0 {
+			tc := choice.ToolCalls[0]
+			if tc.FunctionCall.Name == "handoff" {
+				var args struct {
+					To string `json:"to"`
+				}
+				json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
+
+				// Return tool call message AND update 'next'
+				// Note: We should probably append the tool call to history so the next agent sees it?
+				// Or maybe just the handoff event.
+				// For Swarm, usually we transfer control.
+
+				return map[string]interface{}{
+					"messages": []llms.MessageContent{
+						{
+							Role:  llms.ChatMessageTypeAI,
+							Parts: []llms.ContentPart{tc},
+						},
+						// We also need to add the ToolMessage to complete the turn?
+						// Or the next agent will see the tool call and act?
+						// Let's add a ToolMessage saying "Handoff to X"
+						{
+							Role: llms.ChatMessageTypeTool,
+							Parts: []llms.ContentPart{
+								llms.ToolCallResponse{
+									ToolCallID: tc.ID,
+									Name:       "handoff",
+									Content:    fmt.Sprintf("Handing off to %s", args.To),
+								},
+							},
+						},
+					},
+					"next": args.To,
+				}, nil
+			}
+		}
+
+		// Normal response
+		return map[string]interface{}{
+			"messages": []llms.MessageContent{
+				{
+					Role:  llms.ChatMessageTypeAI,
+					Parts: []llms.ContentPart{llms.TextPart(choice.Content)},
+				},
+			},
+			"next": "END", // Or stay?
+		}, nil
+	})
+
+	// Writer Agent Node
+	workflow.AddNode("Writer", func(ctx context.Context, state interface{}) (interface{}, error) {
+		mState := state.(map[string]interface{})
+		messages := mState["messages"].([]llms.MessageContent)
+
+		systemPrompt := "You are a writer. You write reports based on information. If you need more information, hand off to the Researcher. If you are done, just say 'I am done'."
+		inputMessages := append([]llms.MessageContent{
+			llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
+		}, messages...)
+
+		resp, err := model.GenerateContent(ctx, inputMessages, llms.WithTools([]llms.Tool{HandoffTool}))
+		if err != nil {
+			return nil, err
+		}
+
+		choice := resp.Choices[0]
+
+		if len(choice.ToolCalls) > 0 {
+			tc := choice.ToolCalls[0]
+			if tc.FunctionCall.Name == "handoff" {
+				var args struct {
+					To string `json:"to"`
+				}
+				json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
+
+				return map[string]interface{}{
+					"messages": []llms.MessageContent{
+						{
+							Role:  llms.ChatMessageTypeAI,
+							Parts: []llms.ContentPart{tc},
+						},
+						{
+							Role: llms.ChatMessageTypeTool,
+							Parts: []llms.ContentPart{
+								llms.ToolCallResponse{
+									ToolCallID: tc.ID,
+									Name:       "handoff",
+									Content:    fmt.Sprintf("Handing off to %s", args.To),
+								},
+							},
+						},
+					},
+					"next": args.To,
+				}, nil
+			}
+		}
+
+		return map[string]interface{}{
+			"messages": []llms.MessageContent{
+				{
+					Role:  llms.ChatMessageTypeAI,
+					Parts: []llms.ContentPart{llms.TextPart(choice.Content)},
+				},
+			},
+			"next": "END",
+		}, nil
+	})
+
+	// Define Edge Logic
+	router := func(ctx context.Context, state interface{}) string {
+		mState := state.(map[string]interface{})
+		next, ok := mState["next"].(string)
+		if !ok || next == "" || next == "END" {
+			return graph.END
+		}
+		return next
+	}
+
+	workflow.AddConditionalEdge("Researcher", router)
+	workflow.AddConditionalEdge("Writer", router)
+
+	workflow.SetEntryPoint("Researcher")
+
+	app, err := workflow.Compile()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Run
+	initialState := map[string]interface{}{
+		"messages": []llms.MessageContent{
+			llms.TextParts(llms.ChatMessageTypeHuman, "I need a report on the latest AI trends."),
+		},
+	}
+
+	res, err := app.Invoke(context.Background(), initialState)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mState := res.(map[string]interface{})
+	messages := mState["messages"].([]llms.MessageContent)
+	for _, msg := range messages {
+		role := msg.Role
+		var content string
+		if len(msg.Parts) > 0 {
+			if textPart, ok := msg.Parts[0].(llms.TextContent); ok {
+				content = textPart.Text
+			} else if _, ok := msg.Parts[0].(llms.ToolCall); ok {
+				content = "[Tool Call]"
+			} else if _, ok := msg.Parts[0].(llms.ToolCallResponse); ok {
+				content = "[Tool Response]"
+			}
+		}
+		fmt.Printf("%s: %s\n", role, content)
+	}
+}

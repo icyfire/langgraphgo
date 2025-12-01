@@ -1,0 +1,162 @@
+# 🦜️🔗 LangGraphGo
+
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/smallnest/langgraphgo)
+
+[English](./README.md) | [简体中文](./README_CN.md)
+
+> 🔀 **Fork 自 [paulnegz/langgraphgo](https://github.com/paulnegz/langgraphgo)** - 增强了流式传输、可视化、可观测性和生产就绪特性。
+>
+> 本分支旨在**实现与 Python LangGraph 库的功能对齐**，增加了对并行执行、持久化、高级状态管理、预构建 Agent 和人在回路（HITL）工作流的支持。
+
+## 📦 安装
+
+```bash
+go get github.com/smallnest/langgraphgo
+```
+
+## 🚀 特性
+
+- **核心运行时**:
+    - **并行执行**: 支持节点的并发执行（扇出），并具备线程安全的状态合并。
+    - **运行时配置**: 通过 `RunnableConfig` 传播回调、标签和元数据。
+    - **LangChain 兼容**: 与 `langchaingo` 无缝协作。
+
+- **持久化与可靠性**:
+    - **Checkpointers**: 提供 Redis、Postgres 和 SQLite 实现，用于持久化状态。
+    - **状态恢复**: 支持从 Checkpoint 暂停和恢复执行。
+
+- **高级能力**:
+    - **状态 Schema**: 支持细粒度的状态更新和自定义 Reducer（例如 `AppendReducer`）。
+    - **增强流式传输**: 支持具有细粒度 `StreamEvent` 类型的实时事件流。
+    - **预构建 Agent**: 开箱即用的 `ReAct` 和 `Supervisor` Agent 工厂。
+
+- **开发者体验**:
+    - **可视化**: 支持导出为 Mermaid、DOT 和 ASCII 图表，并支持条件边。
+    - **人在回路 (HITL)**: 支持中断执行 (`InterruptBefore`/`After`) 并使用更新后的状态恢复 (`Command`)。
+    - **可观测性**: 内置追踪和指标支持。
+
+## 🎯 快速开始
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/smallnest/langgraphgo/graph"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+func main() {
+	ctx := context.Background()
+	model, _ := openai.New()
+
+	// 1. 创建图
+	g := graph.NewMessageGraph()
+
+	// 2. 添加节点
+	g.AddNode("generate", func(ctx context.Context, state interface{}) (interface{}, error) {
+		messages := state.([]llms.MessageContent)
+		response, _ := model.GenerateContent(ctx, messages)
+		return append(messages, llms.TextParts("ai", response.Choices[0].Content)), nil
+	})
+
+	// 3. 定义边
+	g.AddEdge("generate", graph.END)
+	g.SetEntryPoint("generate")
+
+	// 4. 编译
+	runnable, _ := g.Compile()
+
+	// 5. 调用
+	initialState := []llms.MessageContent{
+		llms.TextParts("human", "Hello, LangGraphGo!"),
+	}
+	result, _ := runnable.Invoke(ctx, initialState)
+	
+	fmt.Println(result)
+}
+```
+
+## 📚 示例
+
+- **[基础 LLM](./examples/basic_llm/)** - 简单的 LangChain 集成
+- **[RAG 流程](./examples/rag_pipeline/)** - 完整的检索增强生成
+- **[流式传输](./examples/streaming_pipeline/)** - 实时进度更新
+- **[条件路由](./examples/conditional_routing/)** - 动态路径选择
+- **[Checkpointing](./examples/checkpointing/)** - 保存和恢复状态
+- **[可视化](./examples/visualization/)** - 导出图表
+- **[监听器](./examples/listeners/)** - 进度、指标和日志
+- **[子图](./examples/subgraph/)** - 嵌套图组合
+- **[Swarm](./examples/swarm/)** - 多 Agent 协作 (新增!)
+
+## 🔧 核心概念
+
+### 并行执行
+当多个节点共享同一个起始节点时，LangGraphGo 会自动并行执行它们。结果将使用图的状态合并器或 Schema 进行合并。
+
+```go
+g.AddEdge("start", "branch_a")
+g.AddEdge("start", "branch_b")
+// branch_a 和 branch_b 将并发运行
+```
+
+### 人在回路 (HITL)
+暂停执行以允许人工批准或输入。
+
+```go
+config := &graph.Config{
+    InterruptBefore: []string{"human_review"},
+}
+
+// 执行在 "human_review" 节点前停止
+state, err := runnable.InvokeWithConfig(ctx, input, config)
+
+// 恢复执行
+resumeConfig := &graph.Config{
+    ResumeFrom: []string{"human_review"},
+}
+runnable.InvokeWithConfig(ctx, state, resumeConfig)
+```
+
+### 预构建 Agent
+使用工厂函数快速创建复杂的 Agent。
+
+```go
+// 创建 ReAct Agent
+agent, err := prebuilt.CreateReactAgent(model, tools)
+
+// 创建 Supervisor Agent
+supervisor, err := prebuilt.CreateSupervisor(model, agents)
+```
+
+## 🎨 图可视化
+
+```go
+exporter := runnable.GetGraph()
+fmt.Println(exporter.DrawMermaid()) // 生成 Mermaid 流程图
+```
+
+## 📈 性能
+
+- **图操作**: ~14-94μs (取决于格式)
+- **追踪开销**: ~4μs / 次执行
+- **事件处理**: 1000+ 事件/秒
+- **流式延迟**: <100ms
+
+## 🧪 测试
+
+```bash
+go test ./... -v
+```
+
+## 🤝 贡献
+
+本项目欢迎贡献！请查看 `TASKS.md` 了解路线图，查看 `TODOs.md` 了解具体事项。
+
+## 📄 许可证
+
+MIT License - 详情请见原始仓库。

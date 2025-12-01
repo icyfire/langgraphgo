@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // END is a special constant used to represent the end node in the graph.
@@ -19,6 +20,20 @@ var (
 	// ErrNoOutgoingEdge is returned when no outgoing edge is found for a node.
 	ErrNoOutgoingEdge = errors.New("no outgoing edge found for node")
 )
+
+// GraphInterrupt is returned when execution is interrupted by configuration
+type GraphInterrupt struct {
+	// Node that caused the interruption
+	Node string
+	// State at the time of interruption
+	State interface{}
+	// NextNodes that would have been executed if not interrupted
+	NextNodes []string
+}
+
+func (e *GraphInterrupt) Error() string {
+	return fmt.Sprintf("graph interrupted at node %s", e.Node)
+}
 
 // Node represents a node in the message graph.
 type Node struct {
@@ -39,6 +54,9 @@ type Edge struct {
 	To string
 }
 
+// StateMerger merges multiple state updates into a single state.
+type StateMerger func(ctx context.Context, currentState interface{}, newStates []interface{}) (interface{}, error)
+
 // MessageGraph represents a message graph.
 type MessageGraph struct {
 	// nodes is a map of node names to their corresponding Node objects.
@@ -52,6 +70,12 @@ type MessageGraph struct {
 
 	// entryPoint is the name of the entry point node in the graph.
 	entryPoint string
+
+	// stateMerger is an optional function to merge states from parallel execution.
+	stateMerger StateMerger
+
+	// Schema defines the state structure and update logic
+	Schema StateSchema
 }
 
 // NewMessageGraph creates a new instance of MessageGraph.
@@ -87,6 +111,16 @@ func (g *MessageGraph) AddConditionalEdge(from string, condition func(ctx contex
 // SetEntryPoint sets the entry point node name for the message graph.
 func (g *MessageGraph) SetEntryPoint(name string) {
 	g.entryPoint = name
+}
+
+// SetStateMerger sets the state merger function for the message graph.
+func (g *MessageGraph) SetStateMerger(merger StateMerger) {
+	g.stateMerger = merger
+}
+
+// SetSchema sets the state schema for the message graph.
+func (g *MessageGraph) SetSchema(schema StateSchema) {
+	g.Schema = schema
 }
 
 // Runnable represents a compiled message graph that can be invoked.
@@ -133,21 +167,31 @@ func (r *Runnable) Invoke(ctx context.Context, initialState interface{}) (interf
 // It returns the resulting state and an error if any occurs during the execution.
 func (r *Runnable) InvokeWithConfig(ctx context.Context, initialState interface{}, config *Config) (interface{}, error) {
 	state := initialState
-	currentNode := r.graph.entryPoint
+	currentNodes := []string{r.graph.entryPoint}
+
+	// Handle ResumeFrom
+	if config != nil && len(config.ResumeFrom) > 0 {
+		currentNodes = config.ResumeFrom
+	}
 
 	// Generate run ID for callbacks
 	runID := generateRunID()
 
 	// Notify callbacks of graph start
-	if config != nil && len(config.Callbacks) > 0 {
-		serialized := map[string]interface{}{
-			"name": "graph",
-			"type": "chain",
-		}
-		inputs := convertStateToMap(initialState)
+	if config != nil {
+		// Inject config into context
+		ctx = WithConfig(ctx, config)
 
-		for _, cb := range config.Callbacks {
-			cb.OnChainStart(ctx, serialized, inputs, runID, nil, config.Tags, config.Metadata)
+		if len(config.Callbacks) > 0 {
+			serialized := map[string]interface{}{
+				"name": "graph",
+				"type": "chain",
+			}
+			inputs := convertStateToMap(initialState)
+
+			for _, cb := range config.Callbacks {
+				cb.OnChainStart(ctx, serialized, inputs, runID, nil, config.Tags, config.Metadata)
+			}
 		}
 	}
 
@@ -158,98 +202,188 @@ func (r *Runnable) InvokeWithConfig(ctx context.Context, initialState interface{
 		graphSpan.State = initialState
 	}
 
-	for {
-		if currentNode == END {
+	for len(currentNodes) > 0 {
+		// Filter out END nodes
+		activeNodes := make([]string, 0, len(currentNodes))
+		for _, node := range currentNodes {
+			if node != END {
+				activeNodes = append(activeNodes, node)
+			}
+		}
+		currentNodes = activeNodes
+
+		if len(currentNodes) == 0 {
 			break
 		}
 
-		node, ok := r.graph.nodes[currentNode]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, currentNode)
-		}
-
-		// Start node tracing
-		var nodeSpan *TraceSpan
-		if r.tracer != nil {
-			nodeSpan = r.tracer.StartSpan(ctx, TraceEventNodeStart, currentNode)
-			nodeSpan.State = state
-		}
-
-		var err error
-		state, err = node.Function(ctx, state)
-
-		// End node tracing
-		if r.tracer != nil && nodeSpan != nil {
-			if err != nil {
-				r.tracer.EndSpan(ctx, nodeSpan, state, err)
-				// Also emit error event
-				errorSpan := r.tracer.StartSpan(ctx, TraceEventNodeError, currentNode)
-				errorSpan.Error = err
-				errorSpan.State = state
-				r.tracer.EndSpan(ctx, errorSpan, state, err)
-			} else {
-				r.tracer.EndSpan(ctx, nodeSpan, state, nil)
-			}
-		}
-
-		if err != nil {
-			// Notify callbacks of error
-			if config != nil && len(config.Callbacks) > 0 {
-				for _, cb := range config.Callbacks {
-					cb.OnChainError(ctx, err, runID)
+		// Check InterruptBefore
+		if config != nil && len(config.InterruptBefore) > 0 {
+			for _, node := range currentNodes {
+				for _, interrupt := range config.InterruptBefore {
+					if node == interrupt {
+						return state, &GraphInterrupt{Node: node, State: state}
+					}
 				}
 			}
-			return nil, fmt.Errorf("error in node %s: %w", currentNode, err)
 		}
 
-		// Notify callbacks of node execution (as tool)
-		if config != nil && len(config.Callbacks) > 0 {
-			nodeRunID := generateRunID()
-			serialized := map[string]interface{}{
-				"name": currentNode,
-				"type": "tool",
+		// Execute nodes in parallel
+		var wg sync.WaitGroup
+		results := make([]interface{}, len(currentNodes))
+		errorsList := make([]error, len(currentNodes))
+
+		for i, nodeName := range currentNodes {
+			node, ok := r.graph.nodes[nodeName]
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrNodeNotFound, nodeName)
 			}
-			for _, cb := range config.Callbacks {
-				cb.OnToolStart(ctx, serialized, convertStateToString(state), nodeRunID, &runID, config.Tags, config.Metadata)
-				cb.OnToolEnd(ctx, convertStateToString(state), nodeRunID)
+
+			wg.Add(1)
+			go func(index int, n Node, name string) {
+				defer wg.Done()
+
+				// Start node tracing
+				var nodeSpan *TraceSpan
+				if r.tracer != nil {
+					nodeSpan = r.tracer.StartSpan(ctx, TraceEventNodeStart, name)
+					nodeSpan.State = state
+				}
+
+				var err error
+				var res interface{}
+
+				// Pass the current state to the node
+				// Note: If state is mutable and shared, this is not thread-safe unless handled by user.
+				res, err = n.Function(ctx, state)
+
+				// End node tracing
+				if r.tracer != nil && nodeSpan != nil {
+					if err != nil {
+						r.tracer.EndSpan(ctx, nodeSpan, res, err)
+						// Also emit error event
+						errorSpan := r.tracer.StartSpan(ctx, TraceEventNodeError, name)
+						errorSpan.Error = err
+						errorSpan.State = res
+						r.tracer.EndSpan(ctx, errorSpan, res, err)
+					} else {
+						r.tracer.EndSpan(ctx, nodeSpan, res, nil)
+					}
+				}
+
+				if err != nil {
+					errorsList[index] = fmt.Errorf("error in node %s: %w", name, err)
+					return
+				}
+
+				results[index] = res
+
+				// Notify callbacks of node execution (as tool)
+				if config != nil && len(config.Callbacks) > 0 {
+					nodeRunID := generateRunID()
+					serialized := map[string]interface{}{
+						"name": name,
+						"type": "tool",
+					}
+					for _, cb := range config.Callbacks {
+						cb.OnToolStart(ctx, serialized, convertStateToString(res), nodeRunID, &runID, config.Tags, config.Metadata)
+						cb.OnToolEnd(ctx, convertStateToString(res), nodeRunID)
+					}
+				}
+			}(i, node, nodeName)
+		}
+
+		wg.Wait()
+
+		// Check for errors
+		for _, err := range errorsList {
+			if err != nil {
+				// Notify callbacks of error
+				if config != nil && len(config.Callbacks) > 0 {
+					for _, cb := range config.Callbacks {
+						cb.OnChainError(ctx, err, runID)
+					}
+				}
+				return nil, err
 			}
 		}
 
-		// Determine next node
-		var nextNode string
-
-		// First check for conditional edges
-		nextNodeFn, hasConditional := r.graph.conditionalEdges[currentNode]
-		if hasConditional {
-			nextNode = nextNodeFn(ctx, state)
-			if nextNode == "" {
-				return nil, fmt.Errorf("conditional edge returned empty next node from %s", currentNode)
+		// Merge results
+		if r.graph.Schema != nil {
+			// If Schema is defined, use it to update state with results
+			for _, res := range results {
+				var err error
+				state, err = r.graph.Schema.Update(state, res)
+				if err != nil {
+					return nil, fmt.Errorf("schema update failed: %w", err)
+				}
+			}
+		} else if r.graph.stateMerger != nil {
+			var err error
+			state, err = r.graph.stateMerger(ctx, state, results)
+			if err != nil {
+				return nil, fmt.Errorf("state merge failed: %w", err)
 			}
 		} else {
-			// Then check regular edges
-			foundNext := false
-			for _, edge := range r.graph.edges {
-				if edge.From == currentNode {
-					nextNode = edge.To
-					foundNext = true
-					break
+			// Default behavior: if single result, use it. If multiple, use the last one (or maybe we should panic/error?)
+			// For backward compatibility and simple cases, using the last one is a reasonable default
+			// if the user hasn't provided a merger but is using parallel execution.
+			// Ideally, for parallel execution, a merger should be provided.
+			if len(results) > 0 {
+				state = results[len(results)-1]
+			}
+		}
+
+		// Determine next nodes
+		nextNodesSet := make(map[string]bool)
+
+		for _, nodeName := range currentNodes {
+			// First check for conditional edges
+			nextNodeFn, hasConditional := r.graph.conditionalEdges[nodeName]
+			if hasConditional {
+				nextNode := nextNodeFn(ctx, state)
+				if nextNode == "" {
+					return nil, fmt.Errorf("conditional edge returned empty next node from %s", nodeName)
+				}
+				nextNodesSet[nextNode] = true
+			} else {
+				// Then check regular edges
+				foundNext := false
+				for _, edge := range r.graph.edges {
+					if edge.From == nodeName {
+						nextNodesSet[edge.To] = true
+						foundNext = true
+						// Do NOT break here, to allow fan-out (multiple edges from same node)
+					}
+				}
+
+				if !foundNext {
+					return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, nodeName)
 				}
 			}
+		}
 
-			if !foundNext {
-				return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, currentNode)
+		// Update currentNodes
+		nextNodesList := make([]string, 0, len(nextNodesSet))
+		for node := range nextNodesSet {
+			nextNodesList = append(nextNodesList, node)
+		}
+
+		// Check InterruptAfter
+		if config != nil && len(config.InterruptAfter) > 0 {
+			for _, node := range currentNodes {
+				for _, interrupt := range config.InterruptAfter {
+					if node == interrupt {
+						return state, &GraphInterrupt{
+							Node:      node,
+							State:     state,
+							NextNodes: nextNodesList,
+						}
+					}
+				}
 			}
 		}
 
-		// Trace edge traversal
-		if r.tracer != nil && nextNode != "" && nextNode != END {
-			edgeSpan := r.tracer.StartSpan(ctx, TraceEventEdgeTraversal, fmt.Sprintf("%s->%s", currentNode, nextNode))
-			edgeSpan.FromNode = currentNode
-			edgeSpan.ToNode = nextNode
-			r.tracer.EndSpan(ctx, edgeSpan, state, nil)
-		}
-
-		currentNode = nextNode
+		currentNodes = nextNodesList
 	}
 
 	// End graph tracing

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -45,4 +46,19 @@ func convertStateToString(state interface{}) string {
 		return fmt.Sprintf("%v", state)
 	}
 	return string(data)
+}
+
+type configKey struct{}
+
+// WithConfig adds the config to the context
+func WithConfig(ctx context.Context, config *Config) context.Context {
+	return context.WithValue(ctx, configKey{}, config)
+}
+
+// GetConfig retrieves the config from the context
+func GetConfig(ctx context.Context) *Config {
+	if config, ok := ctx.Value(configKey{}).(*Config); ok {
+		return config
+	}
+	return nil
 }

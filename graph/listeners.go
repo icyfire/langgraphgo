@@ -21,6 +21,30 @@ const (
 
 	// NodeEventError indicates a node encountered an error
 	NodeEventError NodeEvent = "error"
+
+	// EventChainStart indicates the graph execution has started
+	EventChainStart NodeEvent = "chain_start"
+
+	// EventChainEnd indicates the graph execution has completed
+	EventChainEnd NodeEvent = "chain_end"
+
+	// EventToolStart indicates a tool execution has started
+	EventToolStart NodeEvent = "tool_start"
+
+	// EventToolEnd indicates a tool execution has completed
+	EventToolEnd NodeEvent = "tool_end"
+
+	// EventLLMStart indicates an LLM call has started
+	EventLLMStart NodeEvent = "llm_start"
+
+	// EventLLMEnd indicates an LLM call has completed
+	EventLLMEnd NodeEvent = "llm_end"
+
+	// EventToken indicates a generated token (for streaming)
+	EventToken NodeEvent = "token"
+
+	// EventCustom indicates a custom user-defined event
+	EventCustom NodeEvent = "custom"
 )
 
 // NodeListener defines the interface for node event listeners
@@ -228,6 +252,15 @@ func (g *ListenableMessageGraph) CompileListenable() (*ListenableRunnable, error
 
 // Invoke executes the graph with listener notifications
 func (lr *ListenableRunnable) Invoke(ctx context.Context, initialState interface{}) (interface{}, error) {
+	return lr.InvokeWithConfig(ctx, initialState, nil)
+}
+
+// InvokeWithConfig executes the graph with listener notifications and config
+func (lr *ListenableRunnable) InvokeWithConfig(ctx context.Context, initialState interface{}, config *Config) (interface{}, error) {
+	if config != nil {
+		ctx = WithConfig(ctx, config)
+	}
+
 	state := initialState
 	currentNode := lr.graph.entryPoint
 

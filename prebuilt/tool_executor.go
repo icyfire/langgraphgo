@@ -1,0 +1,83 @@
+package prebuilt
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/tmc/langchaingo/tools"
+)
+
+// ToolInvocation represents a request to execute a tool
+type ToolInvocation struct {
+	Tool      string `json:"tool"`
+	ToolInput string `json:"tool_input"`
+}
+
+// ToolExecutor executes tools based on invocations
+type ToolExecutor struct {
+	tools map[string]tools.Tool
+}
+
+// NewToolExecutor creates a new ToolExecutor with the given tools
+func NewToolExecutor(inputTools []tools.Tool) *ToolExecutor {
+	toolMap := make(map[string]tools.Tool)
+	for _, t := range inputTools {
+		toolMap[t.Name()] = t
+	}
+	return &ToolExecutor{
+		tools: toolMap,
+	}
+}
+
+// Execute executes a single tool invocation
+func (te *ToolExecutor) Execute(ctx context.Context, invocation ToolInvocation) (string, error) {
+	tool, ok := te.tools[invocation.Tool]
+	if !ok {
+		return "", fmt.Errorf("tool not found: %s", invocation.Tool)
+	}
+
+	return tool.Call(ctx, invocation.ToolInput)
+}
+
+// ExecuteMany executes multiple tool invocations in parallel (if needed, but here sequential for simplicity)
+// In a real graph, this might be a ParallelNode, but here we provide a helper.
+func (te *ToolExecutor) ExecuteMany(ctx context.Context, invocations []ToolInvocation) ([]string, error) {
+	results := make([]string, len(invocations))
+	for i, inv := range invocations {
+		res, err := te.Execute(ctx, inv)
+		if err != nil {
+			return nil, err // Or continue and return partial errors?
+		}
+		results[i] = res
+	}
+	return results, nil
+}
+
+// ToolNode is a graph node function that executes tools
+// It expects the state to contain a list of ToolInvocation or a single ToolInvocation
+// This is a simplified version. In a real agent, it would parse messages.
+func (te *ToolExecutor) ToolNode(ctx context.Context, state interface{}) (interface{}, error) {
+	// Try to parse state as ToolInvocation
+	if inv, ok := state.(ToolInvocation); ok {
+		return te.Execute(ctx, inv)
+	}
+
+	// Try to parse as []ToolInvocation
+	if invs, ok := state.([]ToolInvocation); ok {
+		return te.ExecuteMany(ctx, invs)
+	}
+
+	// Try to parse from map
+	if m, ok := state.(map[string]interface{}); ok {
+		// Check for "tool" and "tool_input" keys
+		if t, ok := m["tool"].(string); ok {
+			input := ""
+			if i, ok := m["tool_input"].(string); ok {
+				input = i
+			}
+			return te.Execute(ctx, ToolInvocation{Tool: t, ToolInput: input})
+		}
+	}
+
+	return nil, fmt.Errorf("invalid state for ToolNode: %T", state)
+}

@@ -16,12 +16,29 @@ func NewExporter(graph *MessageGraph) *Exporter {
 	return &Exporter{graph: graph}
 }
 
+// MermaidOptions defines configuration for Mermaid diagram generation
+type MermaidOptions struct {
+	// Direction of the flowchart (e.g., "TD", "LR")
+	Direction string
+}
+
 // DrawMermaid generates a Mermaid diagram representation of the graph
 func (ge *Exporter) DrawMermaid() string {
+	return ge.DrawMermaidWithOptions(MermaidOptions{
+		Direction: "TD",
+	})
+}
+
+// DrawMermaidWithOptions generates a Mermaid diagram with custom options
+func (ge *Exporter) DrawMermaidWithOptions(opts MermaidOptions) string {
 	var sb strings.Builder
 
 	// Start Mermaid flowchart
-	sb.WriteString("flowchart TD\n")
+	direction := opts.Direction
+	if direction == "" {
+		direction = "TD"
+	}
+	sb.WriteString(fmt.Sprintf("flowchart %s\n", direction))
 
 	// Add entry point styling
 	if ge.graph.entryPoint != "" {
@@ -62,6 +79,12 @@ func (ge *Exporter) DrawMermaid() string {
 	// Add edges
 	for _, edge := range ge.graph.edges {
 		sb.WriteString(fmt.Sprintf("    %s --> %s\n", edge.From, edge.To))
+	}
+
+	// Add conditional edges
+	for from := range ge.graph.conditionalEdges {
+		sb.WriteString(fmt.Sprintf("    %s -.-> %s_condition((?))\n", from, from))
+		sb.WriteString(fmt.Sprintf("    style %s_condition fill:#FFFFE0,stroke:#333,stroke-dasharray: 5 5\n", from))
 	}
 
 	// Style entry point
@@ -107,6 +130,12 @@ func (ge *Exporter) DrawDOT() string {
 	// Add edges
 	for _, edge := range ge.graph.edges {
 		sb.WriteString(fmt.Sprintf("    %s -> %s;\n", edge.From, edge.To))
+	}
+
+	// Add conditional edges
+	for from := range ge.graph.conditionalEdges {
+		sb.WriteString(fmt.Sprintf("    %s -> %s_condition [style=dashed, label=\"?\"];\n", from, from))
+		sb.WriteString(fmt.Sprintf("    %s_condition [label=\"?\", shape=diamond, style=filled, fillcolor=lightyellow];\n", from))
 	}
 
 	sb.WriteString("}\n")
@@ -165,13 +194,28 @@ func (ge *Exporter) drawASCIINode(nodeName string, prefix string, isLast bool, v
 		}
 	}
 
+	// Check for conditional edge
+	if _, ok := ge.graph.conditionalEdges[nodeName]; ok {
+		outgoingEdges = append(outgoingEdges, "(Conditional)")
+	}
+
 	// Sort for consistent output
 	sort.Strings(outgoingEdges)
 
 	// Draw child nodes
 	for i, target := range outgoingEdges {
 		isLastChild := i == len(outgoingEdges)-1
-		ge.drawASCIINode(target, nextPrefix, isLastChild, visited, sb)
+
+		if target == "(Conditional)" {
+			// Draw conditional indicator
+			condConnector := "├──"
+			if isLastChild {
+				condConnector = "└──"
+			}
+			sb.WriteString(fmt.Sprintf("%s%s (?)\n", nextPrefix, condConnector))
+		} else {
+			ge.drawASCIINode(target, nextPrefix, isLastChild, visited, sb)
+		}
 	}
 }
 

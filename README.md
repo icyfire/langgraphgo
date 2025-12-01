@@ -1,40 +1,84 @@
 # 🦜️🔗 LangGraphGo
 
-[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/paulnegz/langgraphgo)
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/smallnest/langgraphgo)
 
-> 🔀 **Forked from [tmc/langgraphgo](https://github.com/tmc/langgraphgo)** - Enhanced with streaming, visualization, observability, and production-ready features.
+[English](./README.md) | [简体中文](./README_CN.md)
+
+> 🔀 **Forked from [paulnegz/langgraphgo](https://github.com/paulnegz/langgraphgo)** - Enhanced with streaming, visualization, observability, and production-ready features.
+>
+> This fork aims for **feature parity with the Python LangGraph library**, adding support for parallel execution, persistence, advanced state management, pre-built agents, and human-in-the-loop workflows.
 
 ## 📦 Installation
 
 ```bash
-go get github.com/paulnegz/langgraphgo
+go get github.com/smallnest/langgraphgo
 ```
 
 ## 🚀 Features
 
-- **LangChain Compatible** - Works with OpenAI, Anthropic, Google AI, and more
-- **Graph Visualization** - Export as Mermaid, DOT, or ASCII diagrams  
-- **Real-time Streaming** - Live progress updates with event listeners
-- **State Checkpointing** - Pause and resume execution
-- **Langfuse Integration** - Automatic observability and tracing for workflows
-- **Production Ready** - Error handling, tracing, metrics, and backpressure
+- **Core Runtime**:
+    - **Parallel Execution**: Concurrent node execution (fan-out) with thread-safe state merging.
+    - **Runtime Configuration**: Propagate callbacks, tags, and metadata via `RunnableConfig`.
+    - **LangChain Compatible**: Works seamlessly with `langchaingo`.
+
+- **Persistence & Reliability**:
+    - **Checkpointers**: Redis, Postgres, and SQLite implementations for durable state.
+    - **State Recovery**: Pause and resume execution from checkpoints.
+
+- **Advanced Capabilities**:
+    - **State Schema**: Granular state updates with custom reducers (e.g., `AppendReducer`).
+    - **Enhanced Streaming**: Real-time event streaming with granular `StreamEvent` types.
+    - **Pre-built Agents**: Ready-to-use `ReAct` and `Supervisor` agent factories.
+
+- **Developer Experience**:
+    - **Visualization**: Export graphs to Mermaid, DOT, and ASCII with conditional edge support.
+    - **Human-in-the-loop (HITL)**: Interrupt execution (`InterruptBefore`/`After`) and resume with updated state (`Command`).
+    - **Observability**: Built-in tracing and metrics support.
 
 ## 🎯 Quick Start
 
 ```go
-// Simple LLM pipeline
-g := graph.NewMessageGraph()
-g.AddNode("generate", func(ctx context.Context, state interface{}) (interface{}, error) {
-    messages := state.([]llms.MessageContent)
-    response, _ := model.GenerateContent(ctx, messages)
-    return append(messages, llms.TextParts("ai", response.Choices[0].Content)), nil
-})
-g.AddEdge("generate", graph.END)
-g.SetEntryPoint("generate")
+package main
 
-// Compile and run
-runnable, _ := g.Compile()
-result, _ := runnable.Invoke(ctx, initialState)
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/smallnest/langgraphgo/graph"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+func main() {
+	ctx := context.Background()
+	model, _ := openai.New()
+
+	// 1. Create Graph
+	g := graph.NewMessageGraph()
+
+	// 2. Add Nodes
+	g.AddNode("generate", func(ctx context.Context, state interface{}) (interface{}, error) {
+		messages := state.([]llms.MessageContent)
+		response, _ := model.GenerateContent(ctx, messages)
+		return append(messages, llms.TextParts("ai", response.Choices[0].Content)), nil
+	})
+
+	// 3. Define Edges
+	g.AddEdge("generate", graph.END)
+	g.SetEntryPoint("generate")
+
+	// 4. Compile
+	runnable, _ := g.Compile()
+
+	// 5. Invoke
+	initialState := []llms.MessageContent{
+		llms.TextParts("human", "Hello, LangGraphGo!"),
+	}
+	result, _ := runnable.Invoke(ctx, initialState)
+	
+	fmt.Println(result)
+}
 ```
 
 ## 📚 Examples
@@ -47,101 +91,53 @@ result, _ := runnable.Invoke(ctx, initialState)
 - **[Visualization](./examples/visualization/)** - Export graph diagrams
 - **[Listeners](./examples/listeners/)** - Progress, metrics, and logging
 - **[Subgraphs](./examples/subgraph/)** - Nested graph composition
-
-## 🎨 Graph Visualization
-
-```mermaid
-%%{init: {'theme':'dark'}}%%
-flowchart TD
-    START(["🚀 START"])
-    query[["🔍 Query Classifier"]]
-    retrieve["📚 Retrieve Docs"]
-    rerank["🎯 Rerank"]
-    check{"✅ Relevance?"}
-    generate["🤖 Generate"]
-    fallback["🌐 Web Search"]
-    format["📝 Format"]
-    END(["✅ END"])
-    
-    START --> query --> retrieve --> rerank --> check
-    check -->|>0.7| generate
-    check -->|≤0.7| fallback --> generate
-    generate --> format --> END
-    
-    style START fill:#90EE90,stroke:#fff,stroke-width:2px
-    style END fill:#FFB6C1,stroke:#fff,stroke-width:2px
-    linkStyle default stroke:#fff,stroke-width:2px
-```
-
-### Export Formats
-
-```go
-exporter := graph.NewGraphExporter(g)
-mermaid := exporter.DrawMermaid()  // Mermaid diagram
-dot := exporter.DrawDOT()          // Graphviz DOT  
-ascii := exporter.DrawASCII()      // Terminal output
-```
+- **[Swarm](./examples/swarm/)** - Multi-agent collaboration (New!)
 
 ## 🔧 Key Concepts
 
-### Conditional Routing
+### Parallel Execution
+LangGraphGo automatically executes nodes in parallel when they share the same starting node. Results are merged using the graph's state merger or schema.
+
 ```go
-g.AddConditionalEdge("router", func(ctx context.Context, state interface{}) string {
-    if state.(Task).Priority == "high" {
-        return "urgent_handler"
-    }
-    return "normal_handler"
-})
+g.AddEdge("start", "branch_a")
+g.AddEdge("start", "branch_b")
+// branch_a and branch_b run concurrently
 ```
 
-### State Checkpointing
-```go
-g := graph.NewCheckpointableMessageGraph()
-g.SetCheckpointConfig(graph.CheckpointConfig{
-    Store: graph.NewMemoryCheckpointStore(),
-    AutoSave: true,
-})
-```
-
-### Event Listeners
-```go
-progress := graph.NewProgressListener().WithTiming(true)
-metrics := graph.NewMetricsListener()
-node.AddListener(progress)
-node.AddListener(metrics)
-```
-
-### Callback Support for Tracing
+### Human-in-the-loop (HITL)
+Pause execution to allow for human approval or input.
 
 ```go
-// Create a callback handler (e.g., for Langfuse tracing)
 config := &graph.Config{
-    Callbacks: []graph.CallbackHandler{myCallbackHandler},
-    Tags:      []string{"operation-name"},
-    Metadata: map[string]interface{}{
-        "user_id": "user123",
-        "session_id": "session456",
-    },
+    InterruptBefore: []string{"human_review"},
 }
 
-// Invoke with callbacks for automatic tracing
-result, _ := runnable.InvokeWithConfig(ctx, initialState, config)
+// Execution stops before "human_review" node
+state, err := runnable.InvokeWithConfig(ctx, input, config)
+
+// Resume execution
+resumeConfig := &graph.Config{
+    ResumeFrom: []string{"human_review"},
+}
+runnable.InvokeWithConfig(ctx, state, resumeConfig)
 ```
 
-### Langfuse Integration Example
+### Pre-built Agents
+Quickly create complex agents using factory functions.
 
 ```go
-// With a Langfuse callback adapter (see langfuse-go for implementation)
-import langfuseCallbacks "github.com/paulnegz/langfuse-go/langchain"
+// Create a ReAct agent
+agent, err := prebuilt.CreateReactAgent(model, tools)
 
-handler := langfuseCallbacks.NewCallbackHandler()
-handler.SetTraceParams("my-operation", "user123", "session456", metadata)
+// Create a Supervisor agent
+supervisor, err := prebuilt.CreateSupervisor(model, agents)
+```
 
-config := &graph.Config{
-    Callbacks: []graph.CallbackHandler{handler},
-}
+## 🎨 Graph Visualization
 
-result, _ := runnable.InvokeWithConfig(ctx, initialState, config)
+```go
+exporter := runnable.GetGraph()
+fmt.Println(exporter.DrawMermaid()) // Generates Mermaid flowchart
 ```
 
 ## 📈 Performance
@@ -154,22 +150,12 @@ result, _ := runnable.InvokeWithConfig(ctx, initialState, config)
 ## 🧪 Testing
 
 ```bash
-go test ./graph -v              # Run tests
-go test ./graph -bench=.        # Run benchmarks
+go test ./... -v
 ```
-
-## 📚 API Documentation
-
-- [Core Graph](./graph/graph.go) - Basic graph operations
-- [Streaming](./graph/streaming.go) - Real-time events
-- [Listeners](./graph/listeners.go) - Event handlers
-- [Checkpointing](./graph/checkpointing.go) - State persistence
-- [Visualization](./graph/visualization.go) - Export formats
-- [Tracing](./graph/tracing.go) - Execution tracing infrastructure
 
 ## 🤝 Contributing
 
-This fork enhances [tmc/langgraphgo](https://github.com/tmc/langgraphgo) with production features while maintaining API compatibility.
+This project is open for contributions! Please check `TASKS.md` for the roadmap and `TODOs.md` for specific items.
 
 ## 📄 License
 

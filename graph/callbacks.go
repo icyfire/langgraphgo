@@ -49,6 +49,15 @@ type Config struct {
 
 	// Timeout for the execution
 	Timeout *time.Duration `json:"timeout"`
+
+	// InterruptBefore nodes to stop before execution
+	InterruptBefore []string `json:"interrupt_before"`
+
+	// InterruptAfter nodes to stop after execution
+	InterruptAfter []string `json:"interrupt_after"`
+
+	// ResumeFrom nodes to start execution from (bypassing entry point)
+	ResumeFrom []string `json:"resume_from"`
 }
 
 // NoOpCallbackHandler provides a no-op implementation of CallbackHandler
