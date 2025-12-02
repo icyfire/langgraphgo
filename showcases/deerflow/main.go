@@ -162,8 +162,11 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 				resultChan = nil
 			} else {
 				// Save run data
-				saveRun(dataDir, query, capturedLogs, res.FinalReport)
-				sendSSE(w, flusher, "result", map[string]string{"report": res.FinalReport})
+				saveRun(dataDir, query, capturedLogs, res.FinalReport, res.PodcastScript)
+				sendSSE(w, flusher, "result", map[string]string{
+					"report":         res.FinalReport,
+					"podcast_script": res.PodcastScript,
+				})
 				return // Done
 			}
 		case err, ok := <-errChan:
@@ -194,7 +197,7 @@ func sanitizeFilename(name string) string {
 	return safe
 }
 
-func saveRun(dir string, query string, logs []string, report string) {
+func saveRun(dir string, query string, logs []string, report string, podcastScript string) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		log.Printf("Failed to create data dir: %v", err)
 		return
@@ -221,6 +224,13 @@ func saveRun(dir string, query string, logs []string, report string) {
 	if err := ioutil.WriteFile(filepath.Join(dir, "report.html"), []byte(report), 0644); err != nil {
 		log.Printf("Failed to save report: %v", err)
 	}
+
+	// Save podcast script if exists
+	if podcastScript != "" {
+		if err := ioutil.WriteFile(filepath.Join(dir, "podcast.txt"), []byte(podcastScript), 0644); err != nil {
+			log.Printf("Failed to save podcast script: %v", err)
+		}
+	}
 }
 
 func replayRun(w http.ResponseWriter, flusher http.Flusher, dir string) {
@@ -240,6 +250,13 @@ func replayRun(w http.ResponseWriter, flusher http.Flusher, dir string) {
 		return
 	}
 
+	// Read podcast script (optional)
+	podcastScript := ""
+	podcastData, err := ioutil.ReadFile(filepath.Join(dir, "podcast.txt"))
+	if err == nil {
+		podcastScript = string(podcastData)
+	}
+
 	sendSSE(w, flusher, "update", map[string]string{"step": "正在从缓存回放..."})
 
 	// Replay logs with simulated delay
@@ -250,7 +267,10 @@ func replayRun(w http.ResponseWriter, flusher http.Flusher, dir string) {
 	}
 
 	// Send result
-	sendSSE(w, flusher, "result", map[string]string{"report": string(reportData)})
+	sendSSE(w, flusher, "result", map[string]string{
+		"report":         string(reportData),
+		"podcast_script": podcastScript,
+	})
 }
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {

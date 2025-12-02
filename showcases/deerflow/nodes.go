@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/html"
@@ -43,23 +43,51 @@ func PlannerNode(ctx context.Context, state interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	prompt := fmt.Sprintf("你是一名研究规划师。请为以下查询创建一个分步研究计划：%s。仅返回编号列表形式的计划。必须使用中文回复。", s.Request.Query)
+	prompt := fmt.Sprintf(`你是一名研究规划师。请为以下查询创建一个分步研究计划：%s。
+同时，请判断用户是否希望同时生成播客（Podcast）脚本（例如查询中包含"播客"、"podcast"、"对话"、"脚本"等意图，或者用户明确要求生成播客）。
+请以 JSON 格式返回结果，格式如下：
+{
+    "plan": ["步骤1", "步骤2", ...],
+    "generate_podcast": true/false
+}
+必须使用中文回复。`, s.Request.Query)
+
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, err
 	}
 
-	// Simple parsing of the plan (splitting by newlines)
-	lines := strings.Split(completion, "\n")
-	var plan []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			plan = append(plan, trimmed)
-		}
+	// Clean up JSON
+	completion = strings.TrimSpace(completion)
+	completion = strings.TrimPrefix(completion, "```json")
+	completion = strings.TrimPrefix(completion, "```")
+	completion = strings.TrimSuffix(completion, "```")
+	completion = strings.TrimSpace(completion)
+
+	var output struct {
+		Plan            []string `json:"plan"`
+		GeneratePodcast bool     `json:"generate_podcast"`
 	}
-	s.Plan = plan
-	s.Plan = plan
+
+	if err := json.Unmarshal([]byte(completion), &output); err != nil {
+		logf(ctx, "JSON 解析失败 (%v)，尝试简单解析\n", err)
+		// Fallback: simple parsing
+		lines := strings.Split(completion, "\n")
+		var plan []string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "}") {
+				plan = append(plan, trimmed)
+			}
+		}
+		s.Plan = plan
+		// Default to false if JSON parsing fails, unless we find keywords in query
+		queryLower := strings.ToLower(s.Request.Query)
+		s.GeneratePodcast = strings.Contains(queryLower, "播客") || strings.Contains(queryLower, "podcast")
+	} else {
+		s.Plan = output.Plan
+		s.GeneratePodcast = output.GeneratePodcast
+	}
 
 	// Format plan for better readability
 	formattedPlan := "生成的计划：\n"
@@ -67,6 +95,9 @@ func PlannerNode(ctx context.Context, state interface{}) (interface{}, error) {
 		formattedPlan += fmt.Sprintf("%s\n", step)
 	}
 	logf(ctx, "%s", formattedPlan)
+	if s.GeneratePodcast {
+		logf(ctx, "检测到播客生成意图。\n")
+	}
 
 	return s, nil
 }
@@ -74,7 +105,7 @@ func PlannerNode(ctx context.Context, state interface{}) (interface{}, error) {
 // ResearcherNode executes the research plan.
 func ResearcherNode(ctx context.Context, state interface{}) (interface{}, error) {
 	s := state.(*State)
-	logf(ctx, "--- 研究节点：正在执行计划（并发） ---\n")
+	logf(ctx, "--- 研究节点：正在执行计划（串行） ---\n")
 
 	// Create Tavily search tool
 	tavilyTool, err := tool.NewTavilySearch("", tool.WithTavilySearchDepth("advanced"))
@@ -84,81 +115,48 @@ func ResearcherNode(ctx context.Context, state interface{}) (interface{}, error)
 		return researchWithLLM(ctx, s)
 	}
 
-	type stepResult struct {
-		summary string
-		images  []string
-	}
-
-	results := make([]stepResult, len(s.Plan))
-	var wg sync.WaitGroup
-	// Limit concurrency to avoid rate limits
-	sem := make(chan struct{}, 5)
-
-	for i, step := range s.Plan {
-		wg.Add(1)
-		go func(i int, step string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			logf(ctx, "正在研究步骤：%s\n", step)
-
-			// Use Tavily to search for information with images
-			searchResult, err := tavilyTool.CallWithImages(ctx, step)
-			if err != nil {
-				logf(ctx, "搜索失败 (%v)，跳过此步骤\n", err)
-				return
-			}
-
-			// Collect images (limit to first 1 per step to avoid too many images)
-			var stepImages []string
-			imageCount := 0
-			for _, imgURL := range searchResult.Images {
-				if imageCount >= 1 {
-					break
-				}
-				stepImages = append(stepImages, imgURL)
-				imageCount++
-			}
-
-			// Use LLM to summarize the search results
-			llm, err := getLLM()
-			if err != nil {
-				logf(ctx, "LLM 初始化失败 (%v)\n", err)
-				return
-			}
-
-			prompt := fmt.Sprintf("你是一名研究员。请根据以下搜索结果为研究步骤 '%s' 提供详细摘要。必须使用中文回复。\n\n搜索结果：\n%s", step, searchResult.Text)
-			summary, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
-			if err != nil {
-				logf(ctx, "摘要生成失败 (%v)，使用原始搜索结果\n", err)
-				summary = searchResult.Text
-			}
-
-			results[i] = stepResult{
-				summary: summary,
-				images:  stepImages,
-			}
-		}(i, step)
-	}
-	wg.Wait()
-
-	// Aggregate results
-	var finalResults []string
+	var results []string
 	var allImages []string
 
-	for i, res := range results {
-		if res.summary == "" {
+	for _, step := range s.Plan {
+		logf(ctx, "正在研究步骤：%s\n", step)
+
+		// Use Tavily to search for information with images
+		searchResult, err := tavilyTool.CallWithImages(ctx, step)
+		if err != nil {
+			logf(ctx, "搜索失败 (%v)，跳过此步骤\n", err)
 			continue
+		}
+
+		// Collect images (limit to first 1 per step to avoid too many images)
+		var stepImages []string
+		imageCount := 0
+		for _, imgURL := range searchResult.Images {
+			if imageCount >= 1 {
+				break
+			}
+			stepImages = append(stepImages, imgURL)
+			imageCount++
+		}
+
+		// Use LLM to summarize the search results
+		llm, err := getLLM()
+		if err != nil {
+			return nil, err
+		}
+
+		prompt := fmt.Sprintf("你是一名研究员。请根据以下搜索结果为研究步骤 '%s' 提供详细摘要。必须使用中文回复。\n\n搜索结果：\n%s", step, searchResult.Text)
+		summary, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
+		if err != nil {
+			logf(ctx, "摘要生成失败 (%v)，使用原始搜索结果\n", err)
+			summary = searchResult.Text
 		}
 
 		// Calculate image indices for this step to help LLM reference them
 		var imgIndices []string
 		startIdx := len(allImages) + 1
-		for j, img := range res.images {
+		for j, img := range stepImages {
 			allImages = append(allImages, img)
-			// We don't strictly need to store indices here if we just append,
-			// but passing the ID to LLM helps it know which image is which.
 			imgIndices = append(imgIndices, fmt.Sprintf("IMAGE_%d", startIdx+j))
 		}
 
@@ -167,10 +165,10 @@ func ResearcherNode(ctx context.Context, state interface{}) (interface{}, error)
 			imgNote = fmt.Sprintf("\n(可用图片: %s)", strings.Join(imgIndices, ", "))
 		}
 
-		finalResults = append(finalResults, fmt.Sprintf("Step: %s\nFindings: %s%s", s.Plan[i], res.summary, imgNote))
+		results = append(results, fmt.Sprintf("Step: %s\nFindings: %s%s", step, summary, imgNote))
 	}
 
-	s.ResearchResults = finalResults
+	s.ResearchResults = results
 	s.Images = allImages
 	logf(ctx, "收集到 %d 张图片\n", len(allImages))
 	return s, nil
@@ -268,6 +266,109 @@ func ReporterNode(ctx context.Context, state interface{}) (interface{}, error) {
 
 	s.FinalReport = string(markdown.Render(doc, renderer))
 	logf(ctx, "最终报告已生成（包含 %d 张图片）。\n", len(s.Images))
+	return s, nil
+}
+
+// PodcastNode generates a podcast script based on the research results.
+func PodcastNode(ctx context.Context, state interface{}) (interface{}, error) {
+	s := state.(*State)
+	logf(ctx, "--- 播客节点：正在生成播客脚本 ---\n")
+
+	llm, err := getLLM()
+	if err != nil {
+		return nil, err
+	}
+
+	researchData := strings.Join(s.ResearchResults, "\n\n")
+	prompt := fmt.Sprintf(`你是一名专业的播客制作人。请根据以下研究结果，创作一段引人入胜的播客对话脚本。
+对话应该由两名主持人（Host 1 和 Host 2）进行，风格轻松幽默，通俗易懂。
+请深入讨论研究结果中的关键点，并加入一些生动的例子或类比。
+
+请以 JSON 格式返回结果，格式如下：
+{
+    "title": "播客标题",
+    "lines": [
+        {"speaker": "Host 1", "content": "对话内容..."},
+        {"speaker": "Host 2", "content": "对话内容..."}
+    ]
+}
+
+研究结果：
+%s
+
+原始查询：%s
+必须使用中文创作。`, researchData, s.Request.Query)
+
+	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clean up JSON
+	completion = strings.TrimSpace(completion)
+	completion = strings.TrimPrefix(completion, "```json")
+	completion = strings.TrimPrefix(completion, "```")
+	completion = strings.TrimSuffix(completion, "```")
+	completion = strings.TrimSpace(completion)
+
+	var script struct {
+		Title string `json:"title"`
+		Lines []struct {
+			Speaker string `json:"speaker"`
+			Content string `json:"content"`
+		} `json:"lines"`
+	}
+
+	if err := json.Unmarshal([]byte(completion), &script); err != nil {
+		logf(ctx, "播客脚本 JSON 解析失败 (%v)，使用原始文本\n", err)
+		s.PodcastScript = fmt.Sprintf("<pre>%s</pre>", completion)
+		return s, nil
+	}
+
+	// Serialize script back to JSON for export
+	jsonBytes, _ := json.Marshal(script)
+	jsonString := string(jsonBytes)
+	jsonString = strings.ReplaceAll(jsonString, "</div>", "<\\/div>") // Escape for HTML embedding
+
+	// Render HTML
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`
+<div class="podcast-container" style="max-width: 800px; margin: 0 auto; font-family: 'Inter', sans-serif;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">%s</h2>
+        <button onclick="window.exportPodcastJson()" style="background-color: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            导出 JSON 脚本
+        </button>
+    </div>
+    <div id="podcastJsonData" style="display:none">%s</div>
+`, script.Title, jsonString))
+
+	for _, line := range script.Lines {
+		speakerClass := "host-1"
+		bgColor := "#e6f7ff"
+		borderColor := "#1890ff"
+		textColor := "#0050b3"
+
+		if strings.Contains(strings.ToLower(line.Speaker), "2") {
+			speakerClass = "host-2"
+			bgColor = "#fff0f6"
+			borderColor = "#eb2f96"
+			textColor = "#9e1068"
+		}
+
+		sb.WriteString(fmt.Sprintf(`
+    <div class="podcast-message %s" style="margin-bottom: 20px; padding: 20px; border-radius: 8px; border-left: 5px solid %s; background-color: %s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <div class="speaker-name" style="font-weight: 700; margin-bottom: 8px; color: %s; text-transform: uppercase; letter-spacing: 0.5px;">%s</div>
+        <div class="message-content" style="line-height: 1.6; color: #333; font-size: 16px;">%s</div>
+    </div>
+`, speakerClass, borderColor, bgColor, textColor, line.Speaker, line.Content))
+	}
+
+	sb.WriteString("</div>")
+
+	s.PodcastScript = sb.String()
+	logf(ctx, "播客脚本已生成。\n")
 	return s, nil
 }
 

@@ -77,6 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tabContents.forEach(c => c.classList.remove('active'));
         if (tabId === 'report') {
             reportTab.classList.add('active');
+        } else if (tabId === 'podcast') {
+            document.getElementById('podcastTab').classList.add('active');
         } else {
             document.getElementById('activitiesContent').classList.add('active');
         }
@@ -148,6 +150,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Final report
                     const report = data.report;
                     reportContent.innerHTML = report;
+
+                    // Handle podcast
+                    const podcastTabBtn = document.getElementById('podcastTabBtn');
+                    const podcastContent = document.getElementById('podcastContent');
+
+                    if (data.podcast_script) {
+                        if (podcastTabBtn && podcastContent) {
+                            podcastTabBtn.style.display = 'block'; // Show tab
+                            // Convert newlines to <br> or wrap in <p>
+                            const formattedScript = data.podcast_script.replace(/\n/g, '<br>');
+                            podcastContent.innerHTML = `<div class="podcast-script" style="line-height: 1.6; font-size: 1.1em;">${formattedScript}</div>`;
+                        }
+                    } else {
+                        // Hide if not present (for subsequent runs)
+                        if (podcastTabBtn) podcastTabBtn.style.display = 'none';
+                    }
+
                     renderMath();
                     highlightCode();
                     setStatus('已完成', false);
@@ -249,5 +268,32 @@ document.addEventListener('DOMContentLoaded', () => {
             hljs.highlightElement(block);
         });
     }
+
+    // Export Podcast JSON
+    window.exportPodcastJson = function () {
+        const jsonDiv = document.getElementById('podcastJsonData');
+        if (!jsonDiv) {
+            alert('无法找到播客数据');
+            return;
+        }
+        try {
+            const jsonText = jsonDiv.textContent;
+            // Validate JSON
+            JSON.parse(jsonText);
+
+            const blob = new Blob([jsonText], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'podcast_script.json';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error('Export failed:', e);
+            alert('导出失败：数据格式错误');
+        }
+    };
 });
 
