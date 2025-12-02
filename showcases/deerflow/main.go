@@ -92,7 +92,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
@@ -246,7 +246,7 @@ func replayRun(w http.ResponseWriter, flusher http.Flusher, dir string) {
 	for _, msg := range logs {
 		sendSSE(w, flusher, "log", map[string]string{"message": msg})
 		// Simulate delay (faster than real-time but noticeable)
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	// Send result

@@ -150,7 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     reportContent.innerHTML = report;
                     renderMath();
                     highlightCode();
-                    await renderMermaid();
                     setStatus('已完成', false);
                     switchTab('report'); // Switch back to Report tab
                     eventSource.close();
@@ -246,37 +245,5 @@ document.addEventListener('DOMContentLoaded', () => {
             hljs.highlightElement(block);
         });
     }
-
-    async function renderMermaid() {
-        if (!window.mermaid) return;
-        mermaid.initialize({ startOnLoad: false, theme: 'default' });
-
-        const mermaidBlocks = reportContent.querySelectorAll('code.language-mermaid');
-        if (mermaidBlocks.length === 0) return;
-
-        const nodesToRender = [];
-        mermaidBlocks.forEach((block) => {
-            const code = block.textContent;
-            const div = document.createElement('div');
-            div.className = 'mermaid';
-            div.textContent = code;
-            // Center the diagram
-            div.style.textAlign = 'center';
-
-            if (block.parentElement && block.parentElement.tagName === 'PRE') {
-                block.parentElement.replaceWith(div);
-            } else {
-                block.replaceWith(div);
-            }
-            nodesToRender.push(div);
-        });
-
-        try {
-            await mermaid.run({
-                nodes: nodesToRender
-            });
-        } catch (e) {
-            console.error('Mermaid error:', e);
-        }
-    }
 });
+
