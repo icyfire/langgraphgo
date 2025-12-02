@@ -152,6 +152,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     highlightCode();
                     setStatus('已完成', false);
                     switchTab('report'); // Switch back to Report tab
+                    // 处理 Mermaid 图表 - 添加这行
+                    if (typeof window.processMermaidBlocks === 'function') {
+                        setTimeout(window.processMermaidBlocks, 100);
+                    }
                     eventSource.close();
                 } else if (data.type === 'error') {
                     addMessage(`错误：${data.message}`, 'system');
