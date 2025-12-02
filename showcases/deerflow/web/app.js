@@ -2,12 +2,68 @@ document.addEventListener('DOMContentLoaded', () => {
     const queryInput = document.getElementById('queryInput');
     const sendBtn = document.getElementById('sendBtn');
     const messagesContainer = document.getElementById('messages');
+    const reportTab = document.getElementById('reportTab');
     const reportContent = document.getElementById('reportContent');
     const logsContainer = document.getElementById('logsContainer');
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = statusIndicator.querySelector('.text');
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
+    const historyBtn = document.getElementById('historyBtn');
+    const historyModal = document.getElementById('historyModal');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+    const historyList = document.getElementById('historyList');
+
+    // History Modal
+    historyBtn.addEventListener('click', () => {
+        loadHistory();
+        historyModal.classList.add('active');
+    });
+
+    closeHistoryBtn.addEventListener('click', () => {
+        historyModal.classList.remove('active');
+    });
+
+    historyModal.addEventListener('click', (e) => {
+        if (e.target === historyModal) {
+            historyModal.classList.remove('active');
+        }
+    });
+
+    async function loadHistory() {
+        try {
+            const res = await fetch('/api/history');
+            const history = await res.json();
+
+            historyList.innerHTML = '';
+            if (!history || history.length === 0) {
+                historyList.innerHTML = '<div class="placeholder-text">历史请求为空</div>';
+                return;
+            }
+
+            history.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'history-item';
+                const date = new Date(item.timestamp).toLocaleString();
+                el.innerHTML = `
+                    <div class="history-query">${item.query}</div>
+                    <div class="history-date">${date}</div>
+                `;
+                el.addEventListener('click', () => {
+                    queryInput.value = item.query;
+                    queryInput.style.height = 'auto';
+                    queryInput.style.height = (queryInput.scrollHeight) + 'px';
+                    sendBtn.disabled = false;
+                    historyModal.classList.remove('active');
+                    handleSearch();
+                });
+                historyList.appendChild(el);
+            });
+        } catch (err) {
+            console.error('Failed to load history:', err);
+            historyList.innerHTML = '<div class="placeholder-text">加载历史记录失败</div>';
+        }
+    }
 
     // Tab switching helper
     function switchTab(tabId) {
@@ -20,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update content
         tabContents.forEach(c => c.classList.remove('active'));
         if (tabId === 'report') {
-            document.getElementById('reportContent').classList.add('active');
+            reportTab.classList.add('active');
         } else {
             document.getElementById('activitiesContent').classList.add('active');
         }
@@ -60,9 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBtn.disabled = true;
 
         // Set status
-        setStatus('Researching...', true);
+        setStatus('正在研究...', true);
         switchTab('activities'); // Switch to Activities tab
-        reportContent.innerHTML = '<div class="placeholder-text">Initializing research agents...</div>';
+        reportContent.innerHTML = '<div class="placeholder-text">正在初始化研究代理...</div>';
         logsContainer.innerHTML = ''; // Clear previous logs
 
         try {
@@ -75,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.type === 'update') {
                     // Update status or partial content
                     if (data.step) {
-                        setStatus(`Executing Step: ${data.step}`, true);
+                        setStatus(data.step, true);
                     }
                     if (data.log) {
                         // Optional: Add logs to a console or debug view
@@ -91,27 +147,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (data.type === 'result') {
                     // Final report
                     const report = data.report;
-                    reportContent.innerHTML = marked.parse(report);
-                    setStatus('Completed', false);
+                    reportContent.innerHTML = report;
+                    renderMath();
+                    highlightCode();
+                    setStatus('已完成', false);
                     switchTab('report'); // Switch back to Report tab
                     eventSource.close();
                 } else if (data.type === 'error') {
-                    addMessage(`Error: ${data.message}`, 'system');
-                    setStatus('Error', false);
+                    addMessage(`错误：${data.message}`, 'system');
+                    setStatus('错误', false);
                     eventSource.close();
                 }
             };
 
             eventSource.onerror = (err) => {
                 console.error('EventSource failed:', err);
-                setStatus('Connection Lost', false);
+                setStatus('连接丢失', false);
                 eventSource.close();
             };
 
         } catch (error) {
             console.error('Error:', error);
-            addMessage('Failed to start research.', 'system');
-            setStatus('Error', false);
+            addMessage('启动研究失败。', 'system');
+            setStatus('错误', false);
         }
     }
 
@@ -141,5 +199,35 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             statusIndicator.classList.remove('active');
         }
+    }
+
+    function renderMath() {
+        if (!window.katex) return;
+        const mathBlocks = reportContent.querySelectorAll('code.language-math');
+        mathBlocks.forEach(block => {
+            const latex = block.textContent;
+            const span = document.createElement('div');
+            span.className = 'math-display';
+            span.style.textAlign = 'center';
+            span.style.margin = '1em 0';
+            try {
+                katex.render(latex, span, { displayMode: true, throwOnError: false });
+                // Replace the parent <pre> if it exists, or just the code block
+                if (block.parentElement && block.parentElement.tagName === 'PRE') {
+                    block.parentElement.replaceWith(span);
+                } else {
+                    block.replaceWith(span);
+                }
+            } catch (e) {
+                console.error('KaTeX error:', e);
+            }
+        });
+    }
+
+    function highlightCode() {
+        if (!window.hljs) return;
+        reportContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
     }
 });

@@ -9,6 +9,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 
 <body>
@@ -24,8 +31,22 @@
                         stroke-linejoin="round" />
                 </svg>
                 <span>DeerFlow</span>
+                <span class="powered-by">powered by langgraphgo</span>
             </div>
             <div class="actions">
+                <a href="https://github.com/smallnest/langgraphgo" target="_blank" class="icon-btn"
+                    title="View on GitHub">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.04-.015-2.04-3.338.72-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.31 24 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                </a>
+                <button class="icon-btn" id="historyBtn" title="History">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </button>
                 <button class="icon-btn" title="Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -50,7 +71,7 @@
                             </svg>
                         </div>
                         <div class="content">
-                            <p>Hello! I'm DeerFlow, your deep research assistant. What would you like to research today?
+                            <p>你好！我是用 Go 编写的 DeerFlow 克隆版，你的深度研究助手。今天你想研究什么？
                             </p>
                         </div>
                     </div>
@@ -58,7 +79,7 @@
 
                 <div class="input-area">
                     <div class="input-wrapper">
-                        <textarea id="queryInput" placeholder="Enter your research topic..." rows="1"></textarea>
+                        <textarea id="queryInput" placeholder="输入你的研究主题..." rows="1"></textarea>
                         <button id="sendBtn" disabled>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
@@ -73,18 +94,20 @@
             <div class="report-panel" id="reportPanel">
                 <div class="panel-header">
                     <div class="tabs">
-                        <button class="tab-btn active" data-tab="report">Report</button>
-                        <button class="tab-btn" data-tab="activities">Activities</button>
+                        <button class="tab-btn active" data-tab="report">报告</button>
+                        <button class="tab-btn" data-tab="activities">活动</button>
                     </div>
                     <div class="status-indicator" id="statusIndicator">
                         <span class="dot"></span>
-                        <span class="text">Idle</span>
+                        <span class="text">空闲</span>
                     </div>
                 </div>
                 <div class="panel-content">
-                    <div class="tab-content active" id="reportContent">
-                        <div class="placeholder-text">
-                            Research results will appear here...
+                    <div class="tab-content active" id="reportTab">
+                        <div id="reportContent" class="report-content">
+                            <div class="placeholder-text">
+                                研究结果将显示在这里...
+                            </div>
                         </div>
                     </div>
                     <div class="tab-content" id="activitiesContent">
@@ -96,7 +119,20 @@
             </div>
         </main>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <div class="modal-overlay" id="historyModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>研究历史</h3>
+                <button class="close-btn" id="closeHistoryBtn">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="history-list" id="historyList">
+                    <!-- History items will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 

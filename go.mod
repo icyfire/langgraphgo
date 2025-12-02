@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/mattn/go-sqlite3 v1.14.32
