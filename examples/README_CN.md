@@ -59,3 +59,4 @@
 - **[Tavily Search](tool_tavily/README_CN.md)**: 使用 Tavily 搜索工具和 ReAct Agent。
 - **[Exa Search](tool_exa/README_CN.md)**: 使用 Exa 搜索工具和 ReAct Agent。
 - **[GoSkills 集成 (GoSkills Integration)](goskills_example/README_CN.md)**: 将 GoSkills 作为工具集成到 Agent 中。
+- **[MCP Agent](mcp_agent/README_CN.md)**: 在 Agent 中使用 Model Context Protocol (MCP) 工具。

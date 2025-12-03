@@ -1,8 +1,10 @@
-# 🦜️🔗 LangGraphGo
+# LangGraphGo
+![](website/images/logo/lango5.png)
 
 [![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/smallnest/langgraphgo)
 
 [English](./README.md) | [简体中文](./README_CN.md)
+
 
 > 🔀 **Forked from [paulnegz/langgraphgo](https://github.com/paulnegz/langgraphgo)** - Enhanced with streaming, visualization, observability, and production-ready features.
 >
