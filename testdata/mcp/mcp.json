@@ -1,5 +1,11 @@
 {
     "mcpServers": {
+        "mcp-hello-world": {
+            "command": "npx",
+            "args": [
+                "mcp-hello-world"
+            ]
+        },
         "sequential-thinking": {
             "type": "stdio",
             "command": "npx",
