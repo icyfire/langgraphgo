@@ -181,6 +181,116 @@ mem := memory.NewBufferMemory(&memory.BufferConfig{
 // Messages automatically managed
 ```
 
+### 7. Graph-Based Memory
+
+**Use case**: When you need to track relationships between topics and messages
+
+**Pros**:
+- Captures relationships between topics
+- Better context understanding through connections
+- Query-relevant retrieval via graph traversal
+
+**Cons**:
+- More complex implementation
+- Requires relationship tracking
+- Higher memory overhead for graph structure
+
+**Example**:
+```go
+mem := memory.NewGraphBasedMemory(&memory.GraphConfig{
+    TopK: 5, // Retrieve top 5 related messages
+    RelationExtractor: func(msg *Message) []string {
+        // Custom logic to extract topics/entities
+        // Default uses simple keyword matching
+        return extractTopics(msg.Content)
+    },
+})
+
+// Messages are connected based on shared topics
+msg1 := memory.NewMessage("user", "What's the price?")
+mem.AddMessage(ctx, msg1)
+
+msg2 := memory.NewMessage("assistant", "The price is $99")
+mem.AddMessage(ctx, msg2)
+
+// Later queries retrieve connected messages
+messages, _ := mem.GetContext(ctx, "price information")
+```
+
+### 8. Compression Memory
+
+**Use case**: Long conversations where aggressive compression is needed
+
+**Pros**:
+- Maintains long-term context efficiently
+- Removes redundancy through compression
+- Consolidates old blocks to save space
+
+**Cons**:
+- Compression requires LLM calls
+- May lose granular details
+- More complex management
+
+**Example**:
+```go
+mem := memory.NewCompressionMemory(&memory.CompressionConfig{
+    CompressionTrigger: 20,           // Compress after 20 messages
+    ConsolidateAfter:   time.Hour,    // Consolidate blocks after 1 hour
+    Compressor: func(ctx context.Context, messages []*Message) (*CompressedBlock, error) {
+        // Use LLM to compress messages
+        return llm.Compress(messages)
+    },
+})
+
+// Messages are automatically compressed and consolidated
+for i := 0; i < 100; i++ {
+    msg := memory.NewMessage("user", fmt.Sprintf("Message %d", i))
+    mem.AddMessage(ctx, msg)
+}
+
+// Returns compressed blocks + recent messages
+messages, _ := mem.GetContext(ctx, "")
+```
+
+### 9. OS-Like Memory
+
+**Use case**: When you need sophisticated memory management like operating systems
+
+**Pros**:
+- Sophisticated lifecycle management (active/cache/archive)
+- Optimal memory usage with paging
+- LRU eviction for automatic cleanup
+
+**Cons**:
+- Complex implementation
+- Overhead of management structures
+- Requires tuning of limits
+
+**Example**:
+```go
+mem := memory.NewOSLikeMemory(&memory.OSLikeConfig{
+    ActiveLimit:  10,             // Max pages in active memory (RAM)
+    CacheLimit:   20,             // Max pages in cache
+    AccessWindow: time.Minute * 5, // Access tracking window
+})
+
+// Memory automatically managed in 3 tiers
+for i := 0; i < 100; i++ {
+    msg := memory.NewMessage("user", fmt.Sprintf("Message %d", i))
+    mem.AddMessage(ctx, msg)
+}
+
+// Most recent and frequently accessed in active memory
+// Less recent in cache
+// Rarely accessed in archive
+messages, _ := mem.GetContext(ctx, "")
+
+// Get detailed memory info
+info := mem.GetMemoryInfo()
+fmt.Printf("Active pages: %d\n", info["active_pages"])
+fmt.Printf("Cached pages: %d\n", info["cached_pages"])
+```
+
 ## Interface
 
 All strategies implement the `Strategy` interface:
@@ -236,6 +346,9 @@ fmt.Printf("Compression Rate: %.2f\n", stats.CompressionRate)
 | Large knowledge base, query-driven | Retrieval |
 | Complex multi-topic conversations | Hierarchical |
 | General purpose, flexible | Buffer |
+| Relationship tracking between topics | Graph-Based |
+| Aggressive compression with consolidation | Compression |
+| Sophisticated memory lifecycle management | OS-Like |
 
 ## Integration Example
 

@@ -181,6 +181,116 @@ mem := memory.NewBufferMemory(&memory.BufferConfig{
 // 消息自动管理
 ```
 
+### 7. 图式内存（Graph-Based Memory）
+
+**使用场景**：需要跟踪主题和消息之间的关系时
+
+**优点**：
+- 捕获主题之间的关系
+- 通过连接更好地理解上下文
+- 基于查询的相关性检索（图遍历）
+
+**缺点**：
+- 实现更复杂
+- 需要关系跟踪
+- 图结构的内存开销较高
+
+**示例**：
+```go
+mem := memory.NewGraphBasedMemory(&memory.GraphConfig{
+    TopK: 5, // 检索最相关的 5 条消息
+    RelationExtractor: func(msg *Message) []string {
+        // 自定义逻辑提取主题/实体
+        // 默认使用简单的关键词匹配
+        return extractTopics(msg.Content)
+    },
+})
+
+// 基于共同主题连接消息
+msg1 := memory.NewMessage("user", "价格是多少？")
+mem.AddMessage(ctx, msg1)
+
+msg2 := memory.NewMessage("assistant", "价格是 99 元")
+mem.AddMessage(ctx, msg2)
+
+// 后续查询会检索相关联的消息
+messages, _ := mem.GetContext(ctx, "价格信息")
+```
+
+### 8. 压缩式内存（Compression Memory）
+
+**使用场景**：长对话需要积极压缩时
+
+**优点**：
+- 高效维护长期上下文
+- 通过压缩移除冗余
+- 整合旧块以节省空间
+
+**缺点**：
+- 压缩需要调用 LLM
+- 可能丢失细节信息
+- 管理更复杂
+
+**示例**：
+```go
+mem := memory.NewCompressionMemory(&memory.CompressionConfig{
+    CompressionTrigger: 20,           // 20 条消息后压缩
+    ConsolidateAfter:   time.Hour,    // 1 小时后整合块
+    Compressor: func(ctx context.Context, messages []*Message) (*CompressedBlock, error) {
+        // 使用 LLM 压缩消息
+        return llm.Compress(messages)
+    },
+})
+
+// 消息自动压缩和整合
+for i := 0; i < 100; i++ {
+    msg := memory.NewMessage("user", fmt.Sprintf("消息 %d", i))
+    mem.AddMessage(ctx, msg)
+}
+
+// 返回压缩块 + 最近消息
+messages, _ := mem.GetContext(ctx, "")
+```
+
+### 9. 类操作系统内存（OS-Like Memory）
+
+**使用场景**：需要像操作系统一样的复杂内存管理时
+
+**优点**：
+- 复杂的生命周期管理（活跃/缓存/归档）
+- 分页机制优化内存使用
+- LRU 淘汰自动清理
+
+**缺点**：
+- 实现复杂
+- 管理结构的开销
+- 需要调优限制参数
+
+**示例**：
+```go
+mem := memory.NewOSLikeMemory(&memory.OSLikeConfig{
+    ActiveLimit:  10,             // 活跃内存最大页数（类似 RAM）
+    CacheLimit:   20,             // 缓存最大页数
+    AccessWindow: time.Minute * 5, // 访问跟踪窗口
+})
+
+// 内存自动在 3 层中管理
+for i := 0; i < 100; i++ {
+    msg := memory.NewMessage("user", fmt.Sprintf("消息 %d", i))
+    mem.AddMessage(ctx, msg)
+}
+
+// 最近和频繁访问的在活跃内存中
+// 较少访问的在缓存中
+// 很少访问的在归档中
+messages, _ := mem.GetContext(ctx, "")
+
+// 获取详细内存信息
+info := mem.GetMemoryInfo()
+fmt.Printf("活跃页数: %d\n", info["active_pages"])
+fmt.Printf("缓存页数: %d\n", info["cached_pages"])
+```
+
 ## 接口
 
 所有策略都实现 `Strategy` 接口：
@@ -236,6 +346,9 @@ fmt.Printf("压缩率: %.2f\n", stats.CompressionRate)
 | 大型知识库，查询驱动 | Retrieval（检索） |
 | 复杂多主题对话 | Hierarchical（分层） |
 | 通用目的，灵活 | Buffer（缓冲） |
+| 主题间关系跟踪 | Graph-Based（图） |
+| 积极压缩和整合 | Compression（压缩） |
+| 复杂内存生命周期管理 | OS-Like（类OS） |
 
 ## 集成示例
 

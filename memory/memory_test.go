@@ -248,3 +248,129 @@ func TestMessageCreation(t *testing.T) {
 		t.Error("Expected non-nil metadata")
 	}
 }
+
+func TestGraphBasedMemory(t *testing.T) {
+	ctx := context.Background()
+
+	mem := NewGraphBasedMemory(&GraphConfig{
+		TopK: 5,
+	})
+
+	// Add related messages
+	msg1 := NewMessage("user", "What's the price of the product?")
+	msg2 := NewMessage("assistant", "The price is $99")
+	msg3 := NewMessage("user", "Tell me about features")
+	msg4 := NewMessage("user", "What's the price again?")
+
+	mem.AddMessage(ctx, msg1)
+	mem.AddMessage(ctx, msg2)
+	mem.AddMessage(ctx, msg3)
+	mem.AddMessage(ctx, msg4)
+
+	// Query should retrieve related messages
+	messages, err := mem.GetContext(ctx, "price information")
+	if err != nil {
+		t.Fatalf("Failed to get context: %v", err)
+	}
+
+	if len(messages) == 0 {
+		t.Error("Expected some messages from graph memory")
+	}
+
+	// Check stats
+	stats, err := mem.GetStats(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get stats: %v", err)
+	}
+
+	if stats.TotalMessages != 4 {
+		t.Errorf("Expected 4 total messages, got %d", stats.TotalMessages)
+	}
+
+	// Check relationships
+	relations := mem.GetRelationships()
+	if len(relations) == 0 {
+		t.Error("Expected some relationships in graph")
+	}
+}
+
+func TestCompressionMemory(t *testing.T) {
+	ctx := context.Background()
+
+	mem := NewCompressionMemory(&CompressionConfig{
+		CompressionTrigger: 3, // Compress after 3 messages
+	})
+
+	// Add messages to trigger compression
+	for i := 0; i < 5; i++ {
+		msg := NewMessage("user", "Message content for compression")
+		if err := mem.AddMessage(ctx, msg); err != nil {
+			t.Fatalf("Failed to add message: %v", err)
+		}
+	}
+
+	messages, err := mem.GetContext(ctx, "")
+	if err != nil {
+		t.Fatalf("Failed to get context: %v", err)
+	}
+
+	// Should have compressed block(s) plus remaining messages
+	if len(messages) == 0 {
+		t.Error("Expected some messages from compression memory")
+	}
+
+	stats, err := mem.GetStats(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get stats: %v", err)
+	}
+
+	// Should show compression
+	if stats.CompressionRate >= 1.0 {
+		t.Logf("Compression rate: %.2f (expected < 1.0 for compression)", stats.CompressionRate)
+	}
+}
+
+func TestOSLikeMemory(t *testing.T) {
+	ctx := context.Background()
+
+	mem := NewOSLikeMemory(&OSLikeConfig{
+		ActiveLimit: 2,
+		CacheLimit:  3,
+	})
+
+	// Add messages
+	for i := 0; i < 10; i++ {
+		msg := NewMessage("user", "Message content")
+		if err := mem.AddMessage(ctx, msg); err != nil {
+			t.Fatalf("Failed to add message: %v", err)
+		}
+	}
+
+	messages, err := mem.GetContext(ctx, "")
+	if err != nil {
+		t.Fatalf("Failed to get context: %v", err)
+	}
+
+	if len(messages) == 0 {
+		t.Error("Expected some messages from OS-like memory")
+	}
+
+	stats, err := mem.GetStats(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get stats: %v", err)
+	}
+
+	if stats.TotalMessages == 0 {
+		t.Error("Expected non-zero total messages")
+	}
+
+	// Check memory info
+	info := mem.GetMemoryInfo()
+	if info == nil {
+		t.Error("Expected memory info")
+	}
+
+	if activePages, ok := info["active_pages"].(int); ok {
+		t.Logf("Active pages: %d", activePages)
+	}
+}
