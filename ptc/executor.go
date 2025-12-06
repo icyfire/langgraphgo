@@ -29,12 +29,14 @@ const (
 	// - Fully implemented and tested
 	// - Better isolation (sandboxed)
 	// - Reliable tool execution
+	// - Exposed server for user code
 	ModeServer ExecutionMode = "server"
 
-	// ModeDirect: Tools are directly embedded in code (default)
-	// - Currently uses placeholder implementations
-	// - Simpler setup, no server required
-	// - Work in progress
+	// ModeDirect: Tools are executed via internal server (default)
+	// - Fully implemented and tested
+	// - Simpler setup (server starts automatically)
+	// - Internal server not exposed to user
+	// - Recommended for most use cases
 	ModeDirect ExecutionMode = "direct"
 )
 
@@ -72,33 +74,36 @@ func NewCodeExecutorWithMode(language ExecutionLanguage, toolList []tools.Tool, 
 		Mode:     mode,
 	}
 
-	// Only create tool server in server mode
-	if mode == ModeServer {
-		executor.toolServer = NewToolServer(toolList)
-	}
+	// Create tool server for both modes
+	// In Direct mode, it's used internally by the helper program
+	// In Server mode, it's exposed to user-generated code
+	executor.toolServer = NewToolServer(toolList)
 
 	return executor
 }
 
-// Start starts the code executor and its tool server (only in server mode)
+// Start starts the code executor and its tool server
+// In both Direct and Server modes, the tool server is started
+// In Direct mode, it's used internally; in Server mode, it's exposed to user code
 func (ce *CodeExecutor) Start(ctx context.Context) error {
-	if ce.Mode == ModeServer && ce.toolServer != nil {
+	if ce.toolServer != nil {
 		return ce.toolServer.Start(ctx)
 	}
 	return nil
 }
 
-// Stop stops the code executor and its tool server (only in server mode)
+// Stop stops the code executor and its tool server
 func (ce *CodeExecutor) Stop(ctx context.Context) error {
-	if ce.Mode == ModeServer && ce.toolServer != nil {
+	if ce.toolServer != nil {
 		return ce.toolServer.Stop(ctx)
 	}
 	return nil
 }
 
-// GetToolServerURL returns the URL of the tool server (empty in direct mode)
+// GetToolServerURL returns the URL of the tool server
+// In both Direct and Server modes, returns the server URL for tool invocation
 func (ce *CodeExecutor) GetToolServerURL() string {
-	if ce.Mode == ModeServer && ce.toolServer != nil {
+	if ce.toolServer != nil {
 		return ce.toolServer.GetBaseURL()
 	}
 	return ""
@@ -521,6 +526,8 @@ func (ce *CodeExecutor) createToolHelperProgram() string {
 
 // generateHelperSource generates the Go source code for the tool helper program
 func (ce *CodeExecutor) generateHelperSource() string {
+	serverURL := ce.GetToolServerURL()
+
 	// Build tool call implementations
 	var toolCases []string
 	for _, tool := range ce.Tools {
@@ -531,19 +538,13 @@ func (ce *CodeExecutor) generateHelperSource() string {
 		toolCases = append(toolCases, toolCase)
 	}
 
-	// Build tool function implementations
+	// Build tool function implementations that call the tool server
 	var toolFuncs []string
-	for i, tool := range ce.Tools {
-		// Capture tool index to avoid closure issues
-		toolIndex := i
-		_ = toolIndex
-
+	for _, tool := range ce.Tools {
 		toolFunc := fmt.Sprintf(`
 func tool_%s(ctx context.Context, input string) (string, error) {
-	// Direct execution of tool: %s
-	// Note: In direct mode, we embed the tool logic here
-	// For now, this is a placeholder that would need actual tool implementation
-	return "Direct mode result for %s: " + input, nil
+	// Call tool via internal server: %s
+	return callToolServer(ctx, "%s", input)
 }`,
 			sanitizeFunctionName(tool.Name()),
 			tool.Description(),
@@ -554,11 +555,16 @@ func tool_%s(ctx context.Context, input string) (string, error) {
 	source := fmt.Sprintf(`package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 )
+
+const toolServerURL = "%s"
 
 type Request struct {
 	ToolName string ` + "`json:\"tool_name\"`" + `
@@ -569,6 +575,59 @@ type Response struct {
 	Success bool   ` + "`json:\"success\"`" + `
 	Result  string ` + "`json:\"result,omitempty\"`" + `
 	Error   string ` + "`json:\"error,omitempty\"`" + `
+}
+
+type ToolCallRequest struct {
+	ToolName string      ` + "`json:\"tool_name\"`" + `
+	Input    interface{} ` + "`json:\"input\"`" + `
+}
+
+type ToolCallResponse struct {
+	Success bool   ` + "`json:\"success\"`" + `
+	Result  string ` + "`json:\"result,omitempty\"`" + `
+	Error   string ` + "`json:\"error,omitempty\"`" + `
+}
+
+// callToolServer calls a tool through the internal tool server
+func callToolServer(ctx context.Context, toolName string, input string) (string, error) {
+	requestBody := ToolCallRequest{
+		ToolName: toolName,
+		Input:    input,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %%w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", toolServerURL+"/call", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %%w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call tool server: %%w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %%w", err)
+	}
+
+	var result ToolCallResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to unmarshal response: %%w", err)
+	}
+
+	if !result.Success {
+		return "", fmt.Errorf("tool execution failed: %%s", result.Error)
+	}
+
+	return result.Result, nil
 }
 
 %s
@@ -619,7 +678,7 @@ func respondError(errMsg string) {
 	}
 	json.NewEncoder(os.Stdout).Encode(resp)
 }
-`, strings.Join(toolFuncs, "\n"), strings.Join(toolCases, "\n"))
+`, serverURL, strings.Join(toolFuncs, "\n"), strings.Join(toolCases, "\n"))
 
 	return source
 }
