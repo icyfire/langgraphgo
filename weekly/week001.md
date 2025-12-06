@@ -10,18 +10,21 @@
 
 ## 📊 本周概览
 
-本周是 LangGraphGo 项目正式启动的第一周，取得了突破性进展。项目从 v0.3.0 起步，经历了 **5 个版本迭代**（v0.3.0 → v0.3.1 → v0.3.2 → v0.4.0 → v0.5.0），并成功发布了 **v0.5.0**。完成了 **7 个大型 Showcase 项目**的复刻和文档整合工作，搭建了**完整的官方网站和知识库**（233 个 HTML 页面 + 193 个 Markdown 文档），总计提交 **70+ 次**（主仓库），新增代码超过 **20,000 行**。
+本周是 LangGraphGo 项目正式启动的第一周，取得了突破性进展。项目从 v0.3.0 起步，经历了 **5 个版本迭代**（v0.3.0 → v0.3.1 → v0.3.2 → v0.4.0 → v0.5.0），并成功发布了 **v0.5.0**。完成了 **7 个大型 Showcase 项目**的复刻和文档整合工作，搭建了**完整的官方网站和知识库**（233 个 HTML 页面 + 193 个 Markdown 文档）。**PTC (程序化工具调用) 功能完整实现并解决所有技术债务**，总计提交 **80+ 次**（主仓库），新增代码超过 **21,000 行**。
 
 ### 关键指标
 
 | 指标 | 数值 |
 |------|------|
 | 版本发布 | 5 个 (v0.5.0, v0.4.0, v0.3.2, v0.3.1, v0.3.0) |
-| Git 提交 | 70+ 次 |
+| Git 提交 | 80+ 次 |
 | Showcases 项目 | 7 个完整项目 |
+| PTC 示例 | 4 个完整示例 |
 | 文档页面 | 33+ 个 (中英双语) |
-| 代码行数增长 | ~20,000+ 行 |
+| 代码行数增长 | ~21,000+ 行 |
 | 功能特性新增 | 15+ 个核心特性 |
+| PTC 测试数量 | 43 个（覆盖率 64.1%）|
+| 技术债务 | 全部解决 ✅ |
 
 ---
 
@@ -504,11 +507,39 @@
   - 测试覆盖率：62.9% → 64.1%（+1.2%）
   - 覆盖边缘情况：空输入、无效输入、大输入、特殊字符、状态转换
   - 43 个测试全部通过 ✅
+- ✅ **更新示例文档** (commit 1be26a7)
+  - 在 examples/README.md 和 README_CN.md 中添加所有 4 个 PTC 示例
+  - 完整的中英双语文档索引
+  - 涵盖：PTC Basic, PTC Simple, PTC Expense Analysis, PTC + GoSkills
+
+### 2025-12-06 今日新增提交（技术债务解决）
+
+**PTC ModeDirect 混合模式完善**
+- `665dbc9` - Implement TRUE ModeDirect: Local tool execution without HTTP server
+- `040669d` - Fix ModeDirect: Hybrid approach for all tools
+- `6330b8c` - Update ExecutionMode documentation to reflect hybrid approach
+
+**日志系统实现**
+- `b71b08c` - Add comprehensive logging system to PTC
+  - Logger 接口、DefaultLogger、NoOpLogger
+  - LogLevel 支持：DEBUG, INFO, WARN, ERROR, NONE
+  - 4 个新的日志测试
+  - test_utils.go 和 logger_test.go
+
+**边缘案例测试**
+- `9605af4` - Add comprehensive edge case tests for PTC
+  - 14 个新的边缘案例测试
+  - edge_cases_test.go (317 行)
+  - 覆盖率提升：62.9% → 64.1%
+
+**文档更新**
+- `5f8b6aa`, `fb51a0e` - Update weekly report
+- `1be26a7` - Add all PTC examples to examples README
 
 ### 待解决
 - 🔲 继续提高测试覆盖率（目标：70%+）
 - 🔲 性能基准测试
-- 🔲 更多 PTC 示例
+- 🔲 为 ptc_simple 和 ptc_expense_analysis 添加 README
 
 ---
 
