@@ -54,14 +54,14 @@ func SearchNode(ctx context.Context, s interface{}) (interface{}, error) {
 
 		// 1. 处理日志输出
 		if strings.HasPrefix(line, "[init]") || strings.HasPrefix(line, "[Init]") || strings.HasPrefix(line, "[Info]") {
-			logf(state, line)
+			logf(state, "%s", line)
 		} else if strings.HasPrefix(line, "[Checking]") {
 			checkCount++
 			if checkCount%100 == 0 {
 				logf(state, "搜索了 %d 个网站", checkCount)
 			}
 		} else if strings.HasPrefix(line, "[Detected]") {
-			logf(state, line)
+			logf(state, "%s", line)
 			isProfileSection = true
 		}
 

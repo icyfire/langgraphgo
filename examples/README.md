@@ -38,6 +38,8 @@ This directory contains various examples demonstrating the features of LangGraph
 - **[Dynamic Skill Agent](dynamic_skill_agent/README.md)**: Agent with dynamic skill discovery and selection.
 - **[ReAct Agent](react_agent/README.md)**: Reason and Action agent using tools.
 - **[Planning Agent](planning_agent/README.md)**: Intelligent agent that dynamically creates workflow plans based on user requests.
+- **[PEV Agent](pev_agent/README.md)**: Plan-Execute-Verify agent with self-correction and error recovery for reliable task execution.
+- **[Reflection Agent](reflection_agent/README.md)**: Iterative improvement agent that refines responses through self-reflection.
 - **[Supervisor](supervisor/README.md)**: Multi-agent orchestration using a supervisor.
 - **[Swarm](swarm/README.md)**: Multi-agent collaboration using handoffs.
 - **[Chat Agent](chat_agent/README.md)**: Multi-turn conversation agent with automatic session management.
