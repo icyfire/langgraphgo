@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LangGraphGo 聊天应用</title>
+    <title id="page-title">LangGraphGo 聊天应用</title>
     <link rel="preload" href="https://cdn.bootcdn.net/ajax/libs/marked/11.1.1/marked.min.js" as="script">
     <link rel="preload" href="https://cdn.bootcdn.net/ajax/libs/highlight.js/11.9.0/highlight.min.js" as="script">
     <link rel="preload" href="https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js" as="script">
@@ -785,8 +785,8 @@
             align-items: center;
             gap: 8px;
             padding: 8px 16px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: #f0fdf4;
+            border: 1px solid #10b981;
             border-radius: 20px;
             cursor: pointer;
             transition: all 0.3s;
@@ -794,8 +794,10 @@
         }
 
         .mcp-status:hover {
-            background: #f0fdf4;
-            border-color: #10b981;
+            background: #dcfce7;
+            border-color: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
         }
 
         .mcp-indicator {
@@ -814,11 +816,11 @@
         .mcp-text {
             font-size: 12px;
             font-weight: 600;
-            color: #64748b;
+            color: #059669;
         }
 
         .mcp-status:hover .mcp-text {
-            color: #10b981;
+            color: #047857;
         }
 
         @keyframes pulse {
@@ -1231,7 +1233,7 @@
         <div class="chat-area">
             <div class="chat-header">
                 <div class="chat-header-left">
-                    <h1>LangGraphGo 聊天</h1>
+                    <h1 id="chat-title">LangGraphGo 聊天</h1>
                     <div class="status" id="status">选择或创建一个会话</div>
                 </div>
                 <div class="chat-header-right">
@@ -1312,6 +1314,32 @@
         let skills = [];
         let hierarchicalData = null;
         let mcpEnabled = false;
+        let chatConfig = {
+            chatTitle: "LangGraphGo 聊天"
+        };
+
+        // Load chat configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    const config = await response.json();
+                    chatConfig = config;
+
+                    // Update page title
+                    document.getElementById('page-title').textContent = config.chatTitle + '应用';
+
+                    // Update chat title in header
+                    const chatTitleElement = document.getElementById('chat-title');
+                    if (chatTitleElement) {
+                        chatTitleElement.textContent = config.chatTitle;
+                    }
+                }
+            } catch (error) {
+                console.log('Failed to load config:', error);
+                // Use default values
+            }
+        }
 
         // Initialize artifacts sidebar as collapsed by default
         document.addEventListener('DOMContentLoaded', () => {
@@ -1360,7 +1388,8 @@
         let artifacts = new Map(); // Store artifacts by ID
         let currentArtifactId = null; // Track currently displayed artifact
 
-        // Load sessions on page load - delay to improve perceived performance
+        // Load config and sessions on page load - delay to improve perceived performance
+        setTimeout(loadConfig, 0);
         setTimeout(loadSessions, 100);
 
         // Enable Enter key to send message

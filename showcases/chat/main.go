@@ -21,6 +21,58 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
+// Config holds application configuration
+type Config struct {
+	ChatTitle     string
+	OpenAIAPIKey  string
+	OpenAIModel   string
+	OpenAIBaseURL string
+}
+
+// loadEnv loads environment variables from .env file if it exists
+func loadEnv() {
+	if _, err := os.Stat(".env"); err == nil {
+		content, err := os.ReadFile(".env")
+		if err != nil {
+			log.Printf("Error reading .env file: %v", err)
+			return
+		}
+
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				os.Setenv(key, value)
+			}
+		}
+	}
+}
+
+// getConfig returns application configuration
+func getConfig() Config {
+	return Config{
+		ChatTitle:     getEnvOrDefault("CHAT_TITLE", "LangGraphGo 聊天"),
+		OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:   getEnvOrDefault("OPENAI_MODEL", "gpt-4o-mini"),
+		OpenAIBaseURL: os.Getenv("OPENAI_BASE_URL"),
+	}
+}
+
+// getEnvOrDefault returns environment variable or default value
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 // SkillInfo stores basic info about a skill
 type SkillInfo struct {
 	Name        string
@@ -303,41 +355,38 @@ type ChatServer struct {
 	llm             llms.Model
 	agentMu         sync.RWMutex
 	port            string
+	config          Config
 	sessionManagers map[string]*SessionManager // clientID -> SessionManager
 	smMu            sync.RWMutex
 }
 
 // NewChatServer creates a new chat server
 func NewChatServer(sessionDir string, maxHistory int, port string) (*ChatServer, error) {
-	// Get API key from environment
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
+	// Load environment variables from .env file
+	loadEnv()
+
+	// Get configuration
+	config := getConfig()
+
+	// Check API key
+	if config.OpenAIAPIKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
 	}
-
-	// Get model name from environment or use default
-	model := os.Getenv("OPENAI_MODEL")
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
-
-	// Get base URL from environment (for OpenAI-compatible APIs)
-	baseURL := os.Getenv("OPENAI_BASE_URL")
 
 	// Create OpenAI LLM (works with OpenAI-compatible APIs like Baidu)
 	var llm llms.Model
 	var err error
 
-	if baseURL != "" {
+	if config.OpenAIBaseURL != "" {
 		llm, err = openai.New(
-			openai.WithModel(model),
-			openai.WithToken(apiKey),
-			openai.WithBaseURL(baseURL),
+			openai.WithModel(config.OpenAIModel),
+			openai.WithToken(config.OpenAIAPIKey),
+			openai.WithBaseURL(config.OpenAIBaseURL),
 		)
 	} else {
 		llm, err = openai.New(
-			openai.WithModel(model),
-			openai.WithToken(apiKey),
+			openai.WithModel(config.OpenAIModel),
+			openai.WithToken(config.OpenAIAPIKey),
 		)
 	}
 
@@ -350,6 +399,7 @@ func NewChatServer(sessionDir string, maxHistory int, port string) (*ChatServer,
 		agents:          make(map[string]ChatAgent),
 		llm:             llm,
 		port:            port,
+		config:          config,
 		sessionManagers: make(map[string]*SessionManager),
 	}, nil
 }
@@ -764,6 +814,14 @@ func (cs *ChatServer) handleToolsHierarchical(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(result)
 }
 
+// handleConfig returns the chat configuration
+func (cs *ChatServer) handleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"chatTitle": cs.config.ChatTitle,
+	})
+}
+
 // Start starts the HTTP server
 func (cs *ChatServer) Start() error {
 	http.HandleFunc("/", cs.handleIndex)
@@ -783,6 +841,7 @@ func (cs *ChatServer) Start() error {
 	http.HandleFunc("/api/chat", cs.handleChat)
 	http.HandleFunc("/api/mcp/tools", cs.handleMCPTools)
 	http.HandleFunc("/api/tools/hierarchical", cs.handleToolsHierarchical)
+	http.HandleFunc("/api/config", cs.handleConfig)
 
 	// Serve static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
