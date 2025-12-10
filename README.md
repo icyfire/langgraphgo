@@ -14,6 +14,10 @@ Website: [http://lango.rpcx.io](http://lango.rpcx.io)
 >
 > This fork aims for **feature parity with the Python LangGraph library**, adding support for parallel execution, persistence, advanced state management, pre-built agents, and human-in-the-loop workflows.
 
+## test coverage
+
+![](coverage.svg)
+
 ## 📦 Installation
 
 ```bash

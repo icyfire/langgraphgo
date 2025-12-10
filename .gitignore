@@ -1,4 +1,5 @@
 coverage.out
+coverage.html
 lint-ci.sh
 
 deerflow
@@ -12,3 +13,6 @@ langmanus
 .env
 
 .idea
+
+example_results.txt
+example_summary.txt

@@ -13,6 +13,10 @@
 
 官网: [http://lango.rpcx.io](http://lango.rpcx.io)
 
+## 单元测试覆盖率
+
+![](coverage.svg)
+
 ## 📦 安装
 
 ```bash
