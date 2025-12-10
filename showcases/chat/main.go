@@ -667,6 +667,103 @@ func (cs *ChatServer) handleMCPTools(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleToolsHierarchical returns tools in a hierarchical structure
+func (cs *ChatServer) handleToolsHierarchical(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get or create agent for this session
+	agent, err := cs.getOrCreateAgent(sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get agent: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Cast to SimpleChatAgent
+	simpleAgent, ok := agent.(*SimpleChatAgent)
+	if !ok {
+		http.Error(w, "Agent does not support tools", http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare hierarchical data
+	var result struct {
+		Skills []map[string]interface{} `json:"skills"`
+		MCPTools []map[string]interface{} `json:"mcp_tools"`
+		Enabled bool `json:"enabled"`
+	}
+
+	result.Enabled = simpleAgent.toolsEnabled
+
+	// Add skills with their tools
+	for _, skill := range simpleAgent.skills {
+		skillData := map[string]interface{}{
+			"name":        skill.Name,
+			"description": skill.Description,
+			"tools":       []map[string]interface{}{},
+		}
+
+		// Get tools for this skill if already loaded
+		if skill.Loaded && len(skill.Tools) > 0 {
+			for _, tool := range skill.Tools {
+				skillData["tools"] = append(skillData["tools"].([]map[string]interface{}), map[string]interface{}{
+					"name":        tool.Name(),
+					"description": tool.Description(),
+				})
+			}
+		} else {
+			// Load tools on demand
+			if tools, err := simpleAgent.loadSkillTools(skill.Name); err == nil {
+				for _, tool := range tools {
+					skillData["tools"] = append(skillData["tools"].([]map[string]interface{}), map[string]interface{}{
+						"name":        tool.Name(),
+						"description": tool.Description(),
+					})
+				}
+			}
+		}
+
+		result.Skills = append(result.Skills, skillData)
+	}
+
+	// Add MCP tools (group them by category if possible, or list them individually)
+	mcpGroups := make(map[string][]map[string]interface{})
+	for _, tool := range simpleAgent.mcpTools {
+		toolName := tool.Name()
+		desc := tool.Description()
+
+		// Try to extract category from tool name (e.g., "puppeteer__puppeteer_navigate" -> "Puppeteer")
+		parts := strings.Split(toolName, "__")
+		var category string
+		if len(parts) >= 2 {
+			// Convert first letter to uppercase
+			category = strings.ToUpper(parts[0][:1]) + strings.ToLower(parts[0][1:])
+		} else {
+			category = "Other"
+		}
+
+		mcpGroups[category] = append(mcpGroups[category], map[string]interface{}{
+			"name":        toolName,
+			"description": desc,
+		})
+	}
+
+	// Convert groups to array
+	for category, tools := range mcpGroups {
+		result.MCPTools = append(result.MCPTools, map[string]interface{}{
+			"category":     category,
+			"description":  fmt.Sprintf("%s tools", category),
+			"tools":        tools,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
 // Start starts the HTTP server
 func (cs *ChatServer) Start() error {
 	http.HandleFunc("/", cs.handleIndex)
@@ -685,6 +782,7 @@ func (cs *ChatServer) Start() error {
 	})
 	http.HandleFunc("/api/chat", cs.handleChat)
 	http.HandleFunc("/api/mcp/tools", cs.handleMCPTools)
+	http.HandleFunc("/api/tools/hierarchical", cs.handleToolsHierarchical)
 
 	// Serve static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))

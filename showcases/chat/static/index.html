@@ -538,12 +538,114 @@
         }
 
         
-        .tools-list {
+        .hierarchical-list {
             display: grid;
             gap: 12px;
         }
 
+        .category-item {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .category-header {
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .category-header:hover {
+            background: #f1f5f9;
+        }
+
+        .category-header.active {
+            background: #e2e8f0;
+        }
+
+        .category-info {
+            flex: 1;
+        }
+
+        .category-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .category-description {
+            color: #64748b;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+            color: #94a3b8;
+        }
+
+        .category-header.active .expand-icon {
+            transform: rotate(90deg);
+        }
+
+        .category-tools {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #ffffff;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .category-tools.expanded {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
         .tool-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background-color 0.2s;
+        }
+
+        .tool-item:last-child {
+            border-bottom: none;
+        }
+
+        .tool-item:hover {
+            background: #f8fafc;
+        }
+
+        .tool-name {
+            font-weight: 500;
+            color: #374151;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .tool-description {
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .tool-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .tool-item.flat {
             padding: 15px;
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -551,34 +653,11 @@
             transition: all 0.2s;
         }
 
-        .tool-item:hover {
+        .tool-item.flat:hover {
             background: #f0fdf4;
             border-color: #10b981;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
-        }
-
-        .tool-name {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 8px;
-            font-size: 16px;
-        }
-
-        .tool-description {
-            color: #64748b;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .tool-type {
-            font-size: 12px;
-            color: #64748b;
-            background: #e2e8f0;
-            padding: 3px 8px;
-            border-radius: 4px;
-            margin-top: 8px;
-            display: inline-block;
         }
 
         .no-tools {
@@ -1205,7 +1284,7 @@
                 <button class="modal-close" onclick="closeSkillsModal()">×</button>
             </div>
             <div class="modal-body">
-                <div id="skills-list" class="tools-list">
+                <div id="skills-list" class="hierarchical-list">
                     <p>加载中...</p>
                 </div>
             </div>
@@ -1220,7 +1299,7 @@
                 <button class="modal-close" onclick="closeMCPToolsModal()">×</button>
             </div>
             <div class="modal-body">
-                <div id="mcp-tools-list" class="tools-list">
+                <div id="mcp-tools-list" class="hierarchical-list">
                     <p>加载中...</p>
                 </div>
             </div>
@@ -1231,6 +1310,7 @@
         let currentSessionId = null;
         let mcpTools = [];
         let skills = [];
+        let hierarchicalData = null;
         let mcpEnabled = false;
 
         // Initialize artifacts sidebar as collapsed by default
@@ -1987,9 +2067,62 @@
 
   
         // Tools Functions
-        async function updateToolsStatus() {
+        async function loadHierarchicalData() {
             if (!currentSessionId) return;
 
+            try {
+                const response = await fetch(`/api/tools/hierarchical?session_id=${currentSessionId}`);
+                if (response.ok) {
+                    hierarchicalData = await response.json();
+
+                    // Update status indicators
+                    mcpEnabled = hierarchicalData.enabled;
+                    skills = hierarchicalData.skills || [];
+                    mcpTools = [];
+
+                    // Flatten MCP tools for status count
+                    hierarchicalData.mcp_tools.forEach(category => {
+                        mcpTools = mcpTools.concat(category.tools || []);
+                    });
+
+                    // Update Skills status
+                    const skillsIndicator = document.getElementById('skills-indicator');
+                    const skillsText = document.getElementById('skills-text');
+
+                    if (skills.length > 0) {
+                        skillsIndicator.classList.remove('disabled');
+                        skillsText.textContent = `Skills (${skills.length})`;
+                        document.getElementById('skills-status').title = `已加载 ${skills.length} 个 Skills`;
+                    } else {
+                        skillsIndicator.classList.add('disabled');
+                        skillsText.textContent = 'Skills';
+                        document.getElementById('skills-status').title = '暂无 Skills';
+                    }
+
+                    // Update MCP status
+                    const mcpIndicator = document.getElementById('mcp-indicator');
+                    const mcpText = document.getElementById('mcp-text');
+
+                    if (mcpEnabled && mcpTools.length > 0) {
+                        mcpIndicator.classList.remove('disabled');
+                        mcpText.textContent = `MCP (${mcpTools.length})`;
+                        document.getElementById('mcp-status').title = `已加载 ${mcpTools.length} 个 MCP 工具`;
+                    } else {
+                        mcpIndicator.classList.add('disabled');
+                        mcpText.textContent = 'MCP';
+                        document.getElementById('mcp-status').title = 'MCP 工具未启用';
+                    }
+                } else {
+                    // Server doesn't support hierarchical tools, fall back to old method
+                    await updateToolsStatusLegacy();
+                }
+            } catch (error) {
+                console.log('Hierarchical tools not available, using legacy:', error);
+                await updateToolsStatusLegacy();
+            }
+        }
+
+        async function updateToolsStatusLegacy() {
             try {
                 const response = await fetch(`/api/mcp/tools?session_id=${currentSessionId}`);
                 if (response.ok) {
@@ -2038,6 +2171,52 @@
             }
         }
 
+        async function updateToolsStatus() {
+            if (hierarchicalData) {
+                // Data already loaded, just update counts
+                const skillsIndicator = document.getElementById('skills-indicator');
+                const skillsText = document.getElementById('skills-text');
+                const mcpIndicator = document.getElementById('mcp-indicator');
+                const mcpText = document.getElementById('mcp-text');
+
+                if (skills.length > 0) {
+                    skillsIndicator.classList.remove('disabled');
+                    skillsText.textContent = `Skills (${skills.length})`;
+                    document.getElementById('skills-status').title = `已加载 ${skills.length} 个 Skills`;
+                } else {
+                    skillsIndicator.classList.add('disabled');
+                    skillsText.textContent = 'Skills';
+                    document.getElementById('skills-status').title = '暂无 Skills';
+                }
+
+                if (mcpEnabled && mcpTools.length > 0) {
+                    mcpIndicator.classList.remove('disabled');
+                    mcpText.textContent = `MCP (${mcpTools.length})`;
+                    document.getElementById('mcp-status').title = `已加载 ${mcpTools.length} 个 MCP 工具`;
+                } else {
+                    mcpIndicator.classList.add('disabled');
+                    mcpText.textContent = 'MCP';
+                    document.getElementById('mcp-status').title = 'MCP 工具未启用';
+                }
+            } else {
+                await loadHierarchicalData();
+            }
+        }
+
+        function toggleCategory(index, type) {
+            const toolsId = type === 'skill' ? `skill-tools-${index}` : `mcp-tools-${index}`;
+            const toolsElement = document.getElementById(toolsId);
+            const headerElement = toolsElement.previousElementSibling;
+
+            if (toolsElement.classList.contains('expanded')) {
+                toolsElement.classList.remove('expanded');
+                headerElement.classList.remove('active');
+            } else {
+                toolsElement.classList.add('expanded');
+                headerElement.classList.add('active');
+            }
+        }
+
         function updateToolsDisabled() {
             const skillsIndicator = document.getElementById('skills-indicator');
             const skillsText = document.getElementById('skills-text');
@@ -2053,17 +2232,38 @@
             document.getElementById('mcp-status').title = 'MCP 未启用';
         }
 
-        function showSkillsModal() {
+        async function showSkillsModal() {
             const modal = document.getElementById('skills-modal');
             const skillsList = document.getElementById('skills-list');
 
-            if (skills.length === 0) {
+            // Load hierarchical data if not loaded
+            if (!hierarchicalData) {
+                await loadHierarchicalData();
+            }
+
+            if (!hierarchicalData || hierarchicalData.skills.length === 0) {
                 skillsList.innerHTML = '<div class="no-tools">暂无可用 Skills</div>';
             } else {
-                skillsList.innerHTML = skills.map(skill => `
-                    <div class="tool-item">
-                        <div class="tool-name">${escapeHtml(skill.name)}</div>
-                        <div class="tool-description">${escapeHtml(skill.description)}</div>
+                skillsList.innerHTML = hierarchicalData.skills.map((skill, index) => `
+                    <div class="category-item">
+                        <div class="category-header" onclick="toggleCategory(${index}, 'skill')">
+                            <div class="category-info">
+                                <div class="category-name">${escapeHtml(skill.name)}</div>
+                                <div class="category-description">${escapeHtml(skill.description)}</div>
+                            </div>
+                            <div class="expand-icon">▶</div>
+                        </div>
+                        <div class="category-tools" id="skill-tools-${index}">
+                            ${skill.tools && skill.tools.length > 0 ?
+                                skill.tools.map(tool => `
+                                    <div class="tool-item">
+                                        <div class="tool-name">${escapeHtml(tool.name)}</div>
+                                        <div class="tool-description">${escapeHtml(tool.description)}</div>
+                                    </div>
+                                `).join('') :
+                                '<div class="tool-item"><div class="tool-description">暂无工具</div></div>'
+                            }
+                        </div>
                     </div>
                 `).join('');
             }
@@ -2076,17 +2276,35 @@
             modal.classList.remove('show');
         }
 
-        function showMCPToolsModal() {
+        async function showMCPToolsModal() {
             const modal = document.getElementById('mcp-tools-modal');
             const mcpToolsList = document.getElementById('mcp-tools-list');
 
-            if (!mcpEnabled || mcpTools.length === 0) {
+            // Load hierarchical data if not loaded
+            if (!hierarchicalData) {
+                await loadHierarchicalData();
+            }
+
+            if (!hierarchicalData || !hierarchicalData.enabled || hierarchicalData.mcp_tools.length === 0) {
                 mcpToolsList.innerHTML = '<div class="no-tools">暂无可用 MCP 工具</div>';
             } else {
-                mcpToolsList.innerHTML = mcpTools.map(tool => `
-                    <div class="tool-item">
-                        <div class="tool-name">${escapeHtml(tool.name)}</div>
-                        <div class="tool-description">${escapeHtml(tool.description)}</div>
+                mcpToolsList.innerHTML = hierarchicalData.mcp_tools.map((category, index) => `
+                    <div class="category-item">
+                        <div class="category-header" onclick="toggleCategory(${index}, 'mcp')">
+                            <div class="category-info">
+                                <div class="category-name">${escapeHtml(category.category)}</div>
+                                <div class="category-description">${escapeHtml(category.description)} (${category.tools.length} tools)</div>
+                            </div>
+                            <div class="expand-icon">▶</div>
+                        </div>
+                        <div class="category-tools" id="mcp-tools-${index}">
+                            ${category.tools.map(tool => `
+                                <div class="tool-item">
+                                    <div class="tool-name">${escapeHtml(tool.name)}</div>
+                                    <div class="tool-description">${escapeHtml(tool.description)}</div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `).join('');
             }
