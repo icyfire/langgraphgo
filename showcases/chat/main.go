@@ -554,7 +554,7 @@ func (cs *ChatServer) handleChat(w http.ResponseWriter, r *http.Request) {
 	sm.AddMessage(req.SessionID, "user", req.Message)
 
 	// Get response from agent
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
 	response, err := agent.Chat(ctx, req.Message)

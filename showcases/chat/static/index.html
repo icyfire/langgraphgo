@@ -1150,11 +1150,12 @@
         let mcpTools = [];
         let mcpEnabled = false;
 
-        // Initialize artifacts sidebar as collapsed
+        // Initialize artifacts sidebar as collapsed by default
         document.addEventListener('DOMContentLoaded', () => {
             const artifactsSidebar = document.getElementById('artifacts-sidebar');
             if (artifactsSidebar) {
                 artifactsSidebar.classList.add('collapsed');
+                isArtifactsOpen = false; // Ensure state is consistent
             }
 
             // Add click listener to MCP status
