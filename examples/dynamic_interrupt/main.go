@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// Create a simple MessageGraph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Define a node that uses dynamic interrupt
 	g.AddNode("ask_name", "ask_name", func(ctx context.Context, state interface{}) (interface{}, error) {

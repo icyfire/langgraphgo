@@ -8,7 +8,7 @@ import (
 )
 
 func TestVisualization(t *testing.T) {
-	g := NewMessageGraph()
+	g := NewStateGraph()
 	g.AddNode("A", "A", func(ctx context.Context, state interface{}) (interface{}, error) { return state, nil })
 	g.AddNode("B", "B", func(ctx context.Context, state interface{}) (interface{}, error) { return state, nil })
 	g.AddNode("C", "C", func(ctx context.Context, state interface{}) (interface{}, error) { return state, nil })

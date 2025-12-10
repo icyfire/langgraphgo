@@ -14,7 +14,7 @@ type Task struct {
 }
 
 func main() {
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Router node - analyzes the task
 	g.AddNode("router", "router", func(ctx context.Context, state interface{}) (interface{}, error) {

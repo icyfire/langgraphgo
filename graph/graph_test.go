@@ -24,7 +24,7 @@ func ExampleMessageGraph() {
 		panic(err)
 	}
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("oracle", "oracle", func(ctx context.Context, state interface{}) (interface{}, error) {
 		messages := state.([]llms.MessageContent)
@@ -72,7 +72,7 @@ func TestMessageGraph(t *testing.T) {
 		{
 			name: "Simple graph",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(_ context.Context, state interface{}) (interface{}, error) {
 					messages := state.([]llms.MessageContent)
 					return append(messages, llms.TextParts("ai", "Node 1")), nil
@@ -97,7 +97,7 @@ func TestMessageGraph(t *testing.T) {
 		{
 			name: "Entry point not set",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(_ context.Context, state interface{}) (interface{}, error) {
 					return state, nil
 				})
@@ -108,7 +108,7 @@ func TestMessageGraph(t *testing.T) {
 		{
 			name: "Node not found",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(_ context.Context, state interface{}) (interface{}, error) {
 					return state, nil
 				})
@@ -121,7 +121,7 @@ func TestMessageGraph(t *testing.T) {
 		{
 			name: "No outgoing edge",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(_ context.Context, state interface{}) (interface{}, error) {
 					return state, nil
 				})
@@ -133,7 +133,7 @@ func TestMessageGraph(t *testing.T) {
 		{
 			name: "Error in node function",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(_ context.Context, _ interface{}) (interface{}, error) {
 					return nil, errors.New("node error")
 				})

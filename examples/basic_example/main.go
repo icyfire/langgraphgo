@@ -22,7 +22,7 @@ func main() {
 func runBasicExample() {
 	fmt.Println("\n1️⃣ Basic Graph Execution")
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("process", "process", func(ctx context.Context, state interface{}) (interface{}, error) {
 		input := state.(string)
@@ -110,7 +110,7 @@ func runCheckpointingExample() {
 func runVisualizationExample() {
 	fmt.Println("\n4️⃣ Graph Visualization")
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("visualize_step1", "visualize_step1", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return state, nil

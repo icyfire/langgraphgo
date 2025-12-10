@@ -31,7 +31,7 @@ func SimpleIntentRouter() {
 	fmt.Println("1️⃣ Intent-Based Routing")
 	fmt.Println("------------------------")
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Entry point - analyze intent
 	g.AddNode("analyze_intent", "analyze_intent", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -121,7 +121,7 @@ func MultiStepWorkflow() {
 	fmt.Println("2️⃣ Multi-Step Workflow with Conditions")
 	fmt.Println("---------------------------------------")
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Data validation step
 	g.AddNode("validate", "validate", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -213,7 +213,7 @@ func DynamicToolSelection() {
 	fmt.Println("3️⃣ Dynamic Tool Selection")
 	fmt.Println("-------------------------")
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Analyze task requirements
 	g.AddNode("analyze_task", "analyze_task", func(ctx context.Context, state interface{}) (interface{}, error) {

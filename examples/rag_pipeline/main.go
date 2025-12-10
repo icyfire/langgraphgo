@@ -26,7 +26,7 @@ func main() {
 	}
 
 	// Create the graph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Query Classification - Route based on intent
 	g.AddNode("query_classifier", "query_classifier", func(ctx context.Context, state interface{}) (interface{}, error) {

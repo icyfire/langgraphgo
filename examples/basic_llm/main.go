@@ -16,7 +16,7 @@ func main() {
 		panic(err)
 	}
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Add node that uses LangChain LLM
 	g.AddNode("generate", "generate", func(ctx context.Context, state interface{}) (interface{}, error) {

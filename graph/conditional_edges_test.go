@@ -23,7 +23,7 @@ func TestConditionalEdges(t *testing.T) {
 		{
 			name: "Simple conditional routing based on content",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 
 				// Add nodes
 				g.AddNode("start", "start", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -74,7 +74,7 @@ func TestConditionalEdges(t *testing.T) {
 		{
 			name: "Conditional routing to general path",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 
 				g.AddNode("start", "start", func(ctx context.Context, state interface{}) (interface{}, error) {
 					return state, nil
@@ -121,7 +121,7 @@ func TestConditionalEdges(t *testing.T) {
 		{
 			name: "Multi-level conditional routing",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 
 				g.AddNode("router", "router", func(ctx context.Context, state interface{}) (interface{}, error) {
 					return state, nil
@@ -168,7 +168,7 @@ func TestConditionalEdges(t *testing.T) {
 		{
 			name: "Conditional edge to END",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 
 				g.AddNode("check", "check", func(ctx context.Context, state interface{}) (interface{}, error) {
 					return state, nil
@@ -251,7 +251,7 @@ func TestConditionalEdges(t *testing.T) {
 func TestConditionalEdges_ChainedConditions(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create a chain of conditional decisions
 	g.AddNode("start", "start", func(ctx context.Context, state interface{}) (interface{}, error) {

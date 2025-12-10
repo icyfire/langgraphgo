@@ -13,7 +13,7 @@ import (
 func TestParallelNodes(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Track execution order
 	var counter int32
@@ -70,7 +70,7 @@ func TestParallelNodes(t *testing.T) {
 func TestMapReduceNode(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create map functions that process parts of data
 	mapFuncs := map[string]func(context.Context, interface{}) (interface{}, error){
@@ -126,7 +126,7 @@ func TestMapReduceNode(t *testing.T) {
 func TestFanOutFanIn(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Source node
 	g.AddNode("source", "source", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -181,7 +181,7 @@ func TestFanOutFanIn(t *testing.T) {
 func TestParallelErrorHandling(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Add parallel nodes where one fails
 	parallelFuncs := map[string]func(context.Context, interface{}) (interface{}, error){
@@ -214,7 +214,7 @@ func TestParallelErrorHandling(t *testing.T) {
 func TestParallelContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Add parallel nodes with different delays
 	parallelFuncs := map[string]func(context.Context, interface{}) (interface{}, error){
@@ -264,7 +264,7 @@ func TestParallelContextCancellation(t *testing.T) {
 }
 
 func BenchmarkParallelExecution(b *testing.B) {
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create many parallel workers
 	workers := make(map[string]func(context.Context, interface{}) (interface{}, error))
@@ -313,7 +313,7 @@ func BenchmarkSequentialVsParallel(b *testing.B) {
 	}
 
 	b.Run("Sequential", func(b *testing.B) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 
 		// Chain nodes sequentially
 		for i := 0; i < 5; i++ {
@@ -337,7 +337,7 @@ func BenchmarkSequentialVsParallel(b *testing.B) {
 	})
 
 	b.Run("Parallel", func(b *testing.B) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 
 		// Add nodes in parallel
 		workers := make(map[string]func(context.Context, interface{}) (interface{}, error))

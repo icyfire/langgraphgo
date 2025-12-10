@@ -8,7 +8,7 @@ import (
 )
 
 func TestGraphInterrupt(t *testing.T) {
-	g := NewMessageGraph()
+	g := NewStateGraph()
 	g.AddNode("A", "A", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return state.(string) + "A", nil
 	})

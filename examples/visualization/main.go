@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// Create a graph representing a data processing pipeline
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Add nodes representing different processing stages
 	g.AddNode("validate_input", "validate_input", func(ctx context.Context, state interface{}) (interface{}, error) {

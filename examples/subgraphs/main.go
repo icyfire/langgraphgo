@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// 1. Define Child Graph
-	child := graph.NewMessageGraph()
+	child := graph.NewStateGraph()
 	child.AddNode("child_process", "child_process", func(ctx context.Context, state interface{}) (interface{}, error) {
 		m := state.(map[string]interface{})
 		m["child_trace"] = "visited"
@@ -23,7 +23,7 @@ func main() {
 	child.AddEdge("child_process", graph.END)
 
 	// 2. Define Parent Graph
-	parent := graph.NewMessageGraph()
+	parent := graph.NewStateGraph()
 	parent.AddNode("start", "start", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return map[string]interface{}{"parent_trace": "started"}, nil
 	})

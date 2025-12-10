@@ -8,7 +8,7 @@ import (
 )
 
 func TestRuntimeConfiguration(t *testing.T) {
-	g := NewMessageGraph()
+	g := NewStateGraph()
 
 	// Define a node that reads config from context
 	g.AddNode("reader", "reader", func(ctx context.Context, state interface{}) (interface{}, error) {

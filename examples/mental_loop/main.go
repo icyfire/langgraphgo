@@ -429,7 +429,7 @@ func main() {
 	}
 
 	// Create the mental loop graph
-	workflow := graph.NewMessageGraph()
+	workflow := graph.NewStateGraph()
 
 	// Add nodes
 	workflow.AddNode("analyst", "analyst", AnalystNode)

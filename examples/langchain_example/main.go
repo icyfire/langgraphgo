@@ -28,7 +28,7 @@ func OpenAIExample() {
 	}
 
 	// Create a graph that uses the LLM
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("chat", "chat", func(ctx context.Context, state interface{}) (interface{}, error) {
 		messages := state.([]llms.MessageContent)

@@ -178,7 +178,7 @@ func TestTracedRunnable_Invoke(t *testing.T) {
 	t.Parallel()
 
 	// Create a simple graph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("node1", "node1", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return fmt.Sprintf("processed_%v", state), nil
@@ -247,7 +247,7 @@ func TestTracedRunnable_WithError(t *testing.T) {
 	t.Parallel()
 
 	// Create a graph with an error-producing node
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("error_node", "error_node", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("intentional error")
@@ -337,7 +337,7 @@ func BenchmarkTracer_StartEndSpan(b *testing.B) {
 
 func BenchmarkTracedRunnable_Invoke(b *testing.B) {
 	// Create a simple graph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 	g.AddNode("node", "node", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return state, nil
 	})

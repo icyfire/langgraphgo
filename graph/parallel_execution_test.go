@@ -23,7 +23,7 @@ func TestParallelExecution_FanOut(t *testing.T) {
 		s.Visited = append(s.Visited, node)
 	}
 
-	g := NewMessageGraph()
+	g := NewStateGraph()
 
 	// Node A: Entry point
 	g.AddNode("A", "A", func(ctx context.Context, state interface{}) (interface{}, error) {

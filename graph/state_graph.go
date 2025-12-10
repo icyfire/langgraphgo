@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -47,7 +48,8 @@ const (
 	LinearBackoff
 )
 
-// NewStateGraph creates a new instance of StateGraph
+// NewStateGraph creates a new instance of StateGraph without a schema.
+// For chat-based agents that need message handling, use NewMessageGraph() instead.
 func NewStateGraph() *StateGraph {
 	return &StateGraph{
 		nodes:            make(map[string]Node),
@@ -99,7 +101,8 @@ func (g *StateGraph) SetSchema(schema StateSchema) {
 
 // StateRunnable represents a compiled state graph that can be invoked
 type StateRunnable struct {
-	graph *StateGraph
+	graph  *StateGraph
+	tracer *Tracer
 }
 
 // Compile compiles the state graph and returns a StateRunnable instance
@@ -109,8 +112,22 @@ func (g *StateGraph) Compile() (*StateRunnable, error) {
 	}
 
 	return &StateRunnable{
-		graph: g,
+		graph:  g,
+		tracer: nil, // Initialize with no tracer
 	}, nil
+}
+
+// SetTracer sets a tracer for observability
+func (r *StateRunnable) SetTracer(tracer *Tracer) {
+	r.tracer = tracer
+}
+
+// WithTracer returns a new StateRunnable with the given tracer
+func (r *StateRunnable) WithTracer(tracer *Tracer) *StateRunnable {
+	return &StateRunnable{
+		graph:  r.graph,
+		tracer: tracer,
+	}
 }
 
 // Invoke executes the compiled state graph with the given input state
@@ -120,12 +137,46 @@ func (r *StateRunnable) Invoke(ctx context.Context, initialState interface{}) (i
 
 // InvokeWithConfig executes the compiled state graph with the given input state and config
 func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState interface{}, config *Config) (interface{}, error) {
-	if config != nil {
-		ctx = WithConfig(ctx, config)
-	}
-
 	state := initialState
 	currentNodes := []string{r.graph.entryPoint}
+
+	// Handle ResumeFrom
+	if config != nil && len(config.ResumeFrom) > 0 {
+		currentNodes = config.ResumeFrom
+	}
+
+	// Generate run ID for callbacks
+	runID := generateRunID()
+
+	// Notify callbacks of graph start
+	if config != nil {
+		// Inject config into context
+		ctx = WithConfig(ctx, config)
+
+		// Inject ResumeValue
+		if config.ResumeValue != nil {
+			ctx = WithResumeValue(ctx, config.ResumeValue)
+		}
+
+		if len(config.Callbacks) > 0 {
+			serialized := map[string]interface{}{
+				"name": "graph",
+				"type": "chain",
+			}
+			inputs := convertStateToMap(initialState)
+
+			for _, cb := range config.Callbacks {
+				cb.OnChainStart(ctx, serialized, inputs, runID, nil, config.Tags, config.Metadata)
+			}
+		}
+	}
+
+	// Start graph tracing if tracer is set
+	var graphSpan *TraceSpan
+	if r.tracer != nil {
+		graphSpan = r.tracer.StartSpan(ctx, TraceEventGraphStart, "graph")
+		graphSpan.State = initialState
+	}
 
 	for len(currentNodes) > 0 {
 		// Filter out END nodes
@@ -139,6 +190,17 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 
 		if len(currentNodes) == 0 {
 			break
+		}
+
+		// Check InterruptBefore
+		if config != nil && len(config.InterruptBefore) > 0 {
+			for _, node := range currentNodes {
+				for _, interrupt := range config.InterruptBefore {
+					if node == interrupt {
+						return state, &GraphInterrupt{Node: node, State: state}
+					}
+				}
+			}
 		}
 
 		// Execute nodes in parallel
@@ -156,13 +218,63 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 			go func(index int, n Node, name string) {
 				defer wg.Done()
 
+				// Recover from panics in node execution
+				defer func() {
+					if r := recover(); r != nil {
+						errorsList[index] = fmt.Errorf("panic in node %s: %v", name, r)
+					}
+				}()
+
+				// Start node tracing
+				var nodeSpan *TraceSpan
+				if r.tracer != nil {
+					nodeSpan = r.tracer.StartSpan(ctx, TraceEventNodeStart, name)
+					nodeSpan.State = state
+				}
+
+				var err error
+				var res interface{}
+
 				// Execute node with retry logic
-				res, err := r.executeNodeWithRetry(ctx, n, state)
+				res, err = r.executeNodeWithRetry(ctx, n, state)
+
+				// End node tracing
+				if r.tracer != nil && nodeSpan != nil {
+					if err != nil {
+						r.tracer.EndSpan(ctx, nodeSpan, res, err)
+						// Also emit error event
+						errorSpan := r.tracer.StartSpan(ctx, TraceEventNodeError, name)
+						errorSpan.Error = err
+						errorSpan.State = res
+						r.tracer.EndSpan(ctx, errorSpan, res, err)
+					} else {
+						r.tracer.EndSpan(ctx, nodeSpan, res, nil)
+					}
+				}
+
 				if err != nil {
+					var nodeInterrupt *NodeInterrupt
+					if errors.As(err, &nodeInterrupt) {
+						nodeInterrupt.Node = name
+					}
 					errorsList[index] = fmt.Errorf("error in node %s: %w", name, err)
 					return
 				}
+
 				results[index] = res
+
+				// Notify callbacks of node execution (as tool)
+				if config != nil && len(config.Callbacks) > 0 {
+					nodeRunID := generateRunID()
+					serialized := map[string]interface{}{
+						"name": name,
+						"type": "tool",
+					}
+					for _, cb := range config.Callbacks {
+						cb.OnToolStart(ctx, serialized, convertStateToString(res), nodeRunID, &runID, config.Tags, config.Metadata)
+						cb.OnToolEnd(ctx, convertStateToString(res), nodeRunID)
+					}
+				}
 			}(i, node, nodeName)
 		}
 
@@ -171,6 +283,23 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 		// Check for errors
 		for _, err := range errorsList {
 			if err != nil {
+				// Check for NodeInterrupt
+				var nodeInterrupt *NodeInterrupt
+				if errors.As(err, &nodeInterrupt) {
+					return state, &GraphInterrupt{
+						Node:           nodeInterrupt.Node,
+						State:          state,
+						InterruptValue: nodeInterrupt.Value,
+						NextNodes:      []string{nodeInterrupt.Node},
+					}
+				}
+
+				// Notify callbacks of error
+				if config != nil && len(config.Callbacks) > 0 {
+					for _, cb := range config.Callbacks {
+						cb.OnChainError(ctx, err, runID)
+					}
+				}
 				return nil, err
 			}
 		}
@@ -269,10 +398,26 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 			}
 		}
 
+		// Check InterruptAfter
+		if config != nil && len(config.InterruptAfter) > 0 {
+			for _, node := range currentNodes {
+				for _, interrupt := range config.InterruptAfter {
+					if node == interrupt {
+						return state, &GraphInterrupt{
+							Node:      node,
+							State:     state,
+							NextNodes: nextNodesList,
+						}
+					}
+				}
+			}
+		}
+
 		// Keep track of nodes that ran for callbacks
 		nodesRan := make([]string, len(currentNodes))
 		copy(nodesRan, currentNodes)
 
+		// Update currentNodes
 		currentNodes = nextNodesList
 
 		// Cleanup ephemeral state if supported
@@ -284,13 +429,28 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 		if config != nil && len(config.Callbacks) > 0 {
 			for _, cb := range config.Callbacks {
 				if gcb, ok := cb.(GraphCallbackHandler); ok {
-					// We emit one event for the step, listing all nodes that ran
-					// Or we could emit one per node? But state is merged.
-					// Let's emit one event for the super-step.
-					nodeName := fmt.Sprintf("step:%v", nodesRan)
+					var nodeName string
+					if len(nodesRan) == 1 {
+						nodeName = nodesRan[0]
+					} else {
+						nodeName = fmt.Sprintf("step:%v", nodesRan)
+					}
 					gcb.OnGraphStep(ctx, nodeName, state)
 				}
 			}
+		}
+	}
+
+	// End graph tracing
+	if r.tracer != nil && graphSpan != nil {
+		r.tracer.EndSpan(ctx, graphSpan, state, nil)
+	}
+
+	// Notify callbacks of graph end
+	if config != nil && len(config.Callbacks) > 0 {
+		outputs := convertStateToMap(state)
+		for _, cb := range config.Callbacks {
+			cb.OnChainEnd(ctx, outputs, runID)
 		}
 	}
 

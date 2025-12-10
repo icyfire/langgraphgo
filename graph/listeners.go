@@ -193,7 +193,7 @@ type ListenableMessageGraph struct {
 // NewListenableMessageGraph creates a new message graph with listener support
 func NewListenableMessageGraph() *ListenableMessageGraph {
 	return &ListenableMessageGraph{
-		MessageGraph:    NewMessageGraph(),
+		MessageGraph:    NewStateGraph(), // Use StateGraph without schema for flexibility
 		listenableNodes: make(map[string]*ListenableNode),
 	}
 }

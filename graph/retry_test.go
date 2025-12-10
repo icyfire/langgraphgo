@@ -19,7 +19,7 @@ func TestRetryNode(t *testing.T) {
 	t.Parallel()
 
 	t.Run("SuccessOnFirstAttempt", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -56,7 +56,7 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("RetryOnTransientFailure", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -96,7 +96,7 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("MaxAttemptsExceeded", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -129,7 +129,7 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("NonRetryableError", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -171,7 +171,7 @@ func TestTimeoutNode(t *testing.T) {
 	t.Parallel()
 
 	t.Run("SuccessWithinTimeout", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 
 		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state interface{}) (interface{}, error) {
 				time.Sleep(10 * time.Millisecond)
@@ -199,7 +199,7 @@ func TestTimeoutNode(t *testing.T) {
 	})
 
 	t.Run("TimeoutExceeded", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 
 		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state interface{}) (interface{}, error) {
 				time.Sleep(100 * time.Millisecond)
@@ -223,7 +223,7 @@ func TestTimeoutNode(t *testing.T) {
 	})
 
 	t.Run("RespectContextCancellation", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 
 		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, _ interface{}) (interface{}, error) {
 				select {
@@ -258,7 +258,7 @@ func TestCircuitBreaker(t *testing.T) {
 	t.Parallel()
 
 	t.Run("CircuitOpensAfterFailures", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -300,7 +300,7 @@ func TestCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("CircuitClosesAfterSuccess", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -351,7 +351,7 @@ func TestRateLimiter(t *testing.T) {
 	t.Parallel()
 
 	t.Run("AllowsCallsWithinLimit", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -387,7 +387,7 @@ func TestRateLimiter(t *testing.T) {
 	})
 
 	t.Run("BlocksCallsExceedingLimit", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -422,7 +422,7 @@ func TestRateLimiter(t *testing.T) {
 	})
 
 	t.Run("AllowsCallsAfterWindowExpires", func(t *testing.T) {
-		g := graph.NewMessageGraph()
+		g := graph.NewStateGraph()
 		callCount := int32(0)
 
 		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state interface{}) (interface{}, error) {

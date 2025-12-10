@@ -9,7 +9,7 @@ import (
 
 func TestSubgraph(t *testing.T) {
 	// 1. Define Child Graph
-	child := NewMessageGraph()
+	child := NewStateGraph()
 	child.AddNode("child_A", "child_A", func(ctx context.Context, state interface{}) (interface{}, error) {
 		m := state.(map[string]interface{})
 		m["child_visited"] = true
@@ -19,7 +19,7 @@ func TestSubgraph(t *testing.T) {
 	child.AddEdge("child_A", END)
 
 	// 2. Define Parent Graph
-	parent := NewMessageGraph()
+	parent := NewStateGraph()
 	parent.AddNode("parent_A", "parent_A", func(ctx context.Context, state interface{}) (interface{}, error) {
 		m := state.(map[string]interface{})
 		m["parent_visited"] = true

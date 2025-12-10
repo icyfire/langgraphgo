@@ -16,10 +16,10 @@ type Document struct {
 
 func main() {
 	// Create main graph
-	main := graph.NewMessageGraph()
+	main := graph.NewStateGraph()
 
 	// Create a validation subgraph
-	validationSubgraph := graph.NewMessageGraph()
+	validationSubgraph := graph.NewStateGraph()
 	validationSubgraph.AddNode("check_format", "check_format", func(ctx context.Context, state interface{}) (interface{}, error) {
 		doc := state.(Document)
 		fmt.Println("  [Subgraph] Checking format...")
@@ -40,7 +40,7 @@ func main() {
 	validationSubgraph.SetEntryPoint("check_format")
 
 	// Create a processing subgraph
-	processingSubgraph := graph.NewMessageGraph()
+	processingSubgraph := graph.NewStateGraph()
 	processingSubgraph.AddNode("transform", "transform", func(ctx context.Context, state interface{}) (interface{}, error) {
 		doc := state.(Document)
 		fmt.Println("  [Subgraph] Transforming content...")
@@ -131,7 +131,7 @@ func main() {
 	// You can also create subgraphs using builder functions
 	fmt.Println("\n=== USING BUILDER FUNCTION ===")
 
-	main2 := graph.NewMessageGraph()
+	main2 := graph.NewStateGraph()
 	err = main2.CreateSubgraph("simple_sub", func(sg *graph.MessageGraph) {
 		sg.AddNode("step1", "step1", func(ctx context.Context, state interface{}) (interface{}, error) {
 			return fmt.Sprintf("%v → step1", state), nil

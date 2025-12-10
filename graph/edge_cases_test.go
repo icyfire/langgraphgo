@@ -27,7 +27,7 @@ func TestEmptyGraph(t *testing.T) {
 		{
 			name: "Graph with no nodes",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				return g
 			},
 			expectError: true,
@@ -36,7 +36,7 @@ func TestEmptyGraph(t *testing.T) {
 		{
 			name: "Graph with nodes but no entry point",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(ctx context.Context, state interface{}) (interface{}, error) {
 					return state, nil
 				})
@@ -48,7 +48,7 @@ func TestEmptyGraph(t *testing.T) {
 		{
 			name: "Graph with self-referencing node",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("node1", "node1", func(ctx context.Context, state interface{}) (interface{}, error) {
 					return state, nil
 				})
@@ -83,7 +83,7 @@ func TestLargeGraph(t *testing.T) {
 		t.Skip("Skipping large graph test in short mode")
 	}
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create a chain of 1000 nodes
 	nodeCount := 1000
@@ -128,7 +128,7 @@ func TestLargeGraph(t *testing.T) {
 func TestConcurrentExecution(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	var counter int32
 	g.AddNode("increment", "increment", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -180,7 +180,7 @@ func TestConcurrentExecution(t *testing.T) {
 func TestContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Add a slow node
 	g.AddNode("slow_node", "slow_node", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -221,7 +221,7 @@ func TestContextCancellation(t *testing.T) {
 func TestPanicRecovery(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("panic_node", "panic_node", func(ctx context.Context, state interface{}) (interface{}, error) {
 		panic("intentional panic")
@@ -250,7 +250,7 @@ func TestPanicRecovery(t *testing.T) {
 func TestComplexConditionalRouting(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create a decision tree with multiple levels
 	g.AddNode("root", "root", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -389,7 +389,7 @@ func TestStateModification(t *testing.T) {
 		{
 			name: "Accumulator pattern",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("accumulate", "accumulate", func(ctx context.Context, state interface{}) (interface{}, error) {
 					acc := state.([]int)
 					return append(acc, len(acc)+1), nil
@@ -410,7 +410,7 @@ func TestStateModification(t *testing.T) {
 		{
 			name: "Map transformation",
 			buildGraph: func() *graph.MessageGraph {
-				g := graph.NewMessageGraph()
+				g := graph.NewStateGraph()
 				g.AddNode("transform", "transform", func(ctx context.Context, state interface{}) (interface{}, error) {
 					m := state.(map[string]interface{})
 					// Transform each value
@@ -482,7 +482,7 @@ func TestStateModification(t *testing.T) {
 func TestErrorPropagation(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	g.AddNode("node1", "node1", func(ctx context.Context, state interface{}) (interface{}, error) {
 		return "step1", nil
@@ -590,7 +590,7 @@ func TestMessageContentEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			g := graph.NewMessageGraph()
+			g := graph.NewStateGraph()
 			g.AddNode("process", "process", func(ctx context.Context, state interface{}) (interface{}, error) {
 				msgs := state.([]llms.MessageContent)
 				return tt.transform(msgs), nil
@@ -615,7 +615,7 @@ func TestMessageContentEdgeCases(t *testing.T) {
 
 // BenchmarkConditionalEdges benchmarks conditional edge performance
 func BenchmarkConditionalEdges(b *testing.B) {
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create a graph with conditional routing
 	g.AddNode("router", "router", func(ctx context.Context, state interface{}) (interface{}, error) {
@@ -656,7 +656,7 @@ func BenchmarkConditionalEdges(b *testing.B) {
 
 // BenchmarkLargeStateTransfer benchmarks performance with large state objects
 func BenchmarkLargeStateTransfer(b *testing.B) {
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Create nodes that pass large state
 	g.AddNode("node1", "node1", func(ctx context.Context, state interface{}) (interface{}, error) {

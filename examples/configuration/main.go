@@ -17,7 +17,7 @@ type UserConfig struct {
 
 func main() {
 	// Create a new graph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph()
 
 	// Define a node that uses the configuration
 	g.AddNode("process", "process", func(ctx context.Context, state interface{}) (interface{}, error) {
