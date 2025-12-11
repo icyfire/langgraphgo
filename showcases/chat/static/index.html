@@ -166,7 +166,7 @@
             <div class="messages" id="messages">
                 <div class="welcome">
                     <h2>👋 欢迎!</h2>
-                    <p>创建一个新会话或选择现有会话开始聊天。</p>
+                    <p>创建或选择一个会话开始聊天。</p>
                 </div>
             </div>
             <div class="input-area">
@@ -763,7 +763,7 @@
             }
         });
 
-        async function loadSessions() {
+        async function loadSessions(createIfEmpty = true) {
             const sessionsList = document.getElementById('sessions-list');
             // Show loading state immediately
             if (sessionsList.children.length === 0) {
@@ -782,44 +782,69 @@
                 const sessions = await response.json();
                 sessionsList.innerHTML = '';
 
-                // Filter out sessions with explicitly 0 messages (but keep sessions where message_count is undefined/null)
-                const filteredSessions = sessions.filter(session =>
-                    session.message_count === undefined ||
-                    session.message_count === null ||
-                    session.message_count > 0
-                );
-
-                if (filteredSessions.length === 0) {
-                    // Auto-create first session if none exists
-                    sessionsList.innerHTML = '<p style="padding: 20px; text-align: center; color: #7f8c8d;">创建会话中...</p>';
+                // Only create a new session on first load if requested
+                if (createIfEmpty && !currentSessionId) {
+                    sessionsList.innerHTML = '<p style="padding: 20px; text-align: center; color: #7f8c8d;">创建新会话中...</p>';
                     // Use setTimeout to not block the UI
                     setTimeout(() => createNewSession(true), 50);
                     return;
                 }
 
-                filteredSessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-
-                // Auto-select the most recent session if no current session is selected
-                if (!currentSessionId && filteredSessions.length > 0) {
-                    selectSession(filteredSessions[0].id);
+                // Otherwise, just load and display all sessions
+                await loadSessionList();
+            } catch (error) {
+                console.error('Failed to load sessions:', error);
+                if (sessionsList.innerHTML.includes('加载中')) {
+                    sessionsList.innerHTML = '<p style="padding: 20px; text-align: center; color: #e74c3c;">加载失败，请刷新页面</p>';
                 }
+            }
+        }
+
+        async function loadSessionList() {
+            const sessionsList = document.getElementById('sessions-list');
+
+            try {
+                // Use a timeout to prevent long waiting
+                const response = await Promise.race([
+                    fetch('/api/sessions'),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout')), 5000)
+                    )
+                ]);
+
+                const sessions = await response.json();
+                sessionsList.innerHTML = '';
+
+                // Filter out sessions with 0 messages
+                const filteredSessions = sessions.filter(session => {
+                    const messageCount = session.message_count !== undefined ? session.message_count : 0;
+                    return messageCount > 0;
+                });
+
+                filteredSessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
                 filteredSessions.forEach(session => {
                     const item = document.createElement('div');
                     item.className = 'session-item' + (session.id === currentSessionId ? ' active' : '');
                     item.setAttribute('data-session-id', session.id);
+                    const messageCount = session.message_count !== undefined ? session.message_count : 0;
                     item.innerHTML = `
                         <div class="session-title">${session.title || '新会话'}</div>
                         <div class="session-meta-row">
-                            <div class="session-meta">${session.message_count} 条消息 • ${formatDate(session.updated_at)}</div>
+                            <div class="session-meta">${messageCount} 条消息 • ${formatDate(session.updated_at)}</div>
                             <button class="session-action-btn delete-btn" onclick="deleteSession('${session.id}', event)">删除</button>
                         </div>
                     `;
                     item.onclick = () => selectSession(session.id);
                     sessionsList.appendChild(item);
                 });
+
+                // If no sessions with messages, show a message
+                if (filteredSessions.length === 0 && currentSessionId) {
+                    sessionsList.innerHTML = '<p style="padding: 20px; text-align: center; color: #7f8c8d;">暂无历史会话</p>';
+                }
             } catch (error) {
-                console.error('Failed to load sessions:', error);
+                console.error('Failed to load session list:', error);
                 if (sessionsList.innerHTML.includes('加载中')) {
                     sessionsList.innerHTML = '<p style="padding: 20px; text-align: center; color: #e74c3c;">加载失败，请刷新页面</p>';
                 }
@@ -832,16 +857,18 @@
                 const data = await response.json();
 
                 if (autoSelect) {
-                    // For auto-created sessions, directly select without reloading
+                    // For auto-created sessions, set as current and load history
                     currentSessionId = data.session_id;
                     document.getElementById('message-input').disabled = false;
                     document.getElementById('send-btn').disabled = false;
                     document.getElementById('status').textContent = '';
                     // Load history (will be empty for new session)
                     await loadHistory(data.session_id);
+                    // Also load and display the session list in sidebar
+                    await loadSessionList();
                 } else {
-                    // For manual clicks, reload the full session list
-                    await loadSessions();
+                    // For manual clicks, reload the session list without auto-creating
+                    await loadSessions(false);
                     selectSession(data.session_id);
                 }
             } catch (error) {
@@ -888,8 +915,13 @@
                 // Clear artifacts before loading history
                 artifacts.clear();
 
-                for (const msg of messages) {
-                    await addMessageToUI(msg.role, msg.content, msg.timestamp);
+                if (messages.length === 0) {
+                    // Show welcome message for new empty sessions
+                    messagesDiv.innerHTML = '<div class="welcome"><h2>👋 欢迎!</h2><p>开始您的对话吧！</p></div>';
+                } else {
+                    for (const msg of messages) {
+                        await addMessageToUI(msg.role, msg.content, msg.timestamp);
+                    }
                 }
 
                 scrollToBottom();
@@ -1483,15 +1515,20 @@
 
                 if (sessionId === currentSessionId) {
                     currentSessionId = null;
-                    document.getElementById('messages').innerHTML = '<div class="welcome"><h2>👋 欢迎!</h2><p>创建一个新会话或选择现有会话开始聊天。</p></div>';
+                    document.getElementById('messages').innerHTML = '<div class="welcome"><h2>👋 欢迎!</h2><p>创建或选择一个会话开始聊天。</p></div>';
                     document.getElementById('message-input').disabled = true;
                     document.getElementById('send-btn').disabled = true;
                     document.getElementById('status').textContent = '选择或创建一个会话';
 
                     // Clear artifacts if we're deleting the current session
                     clearArtifacts();
+
+                    // Auto-create a new session after deleting the current one
+                    setTimeout(() => createNewSession(true), 100);
+                } else {
+                    // If deleting another session, just reload the session list
+                    await loadSessionList();
                 }
-                loadSessions();
             } catch (error) {
                 console.error('Failed to delete session:', error);
                 alert('Failed to delete session');
@@ -1544,36 +1581,49 @@
 
             // Extract code blocks using regex pattern
             // Format: ```language ... ```
-            const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+            // Also supports: ```language:artifact ... ``` (forced artifact)
+            const codeBlockRegex = /```(\w+)(?::artifact)?\n([\s\S]*?)```/g;
 
             let match;
             let artifactIndex = 0;
 
             while ((match = codeBlockRegex.exec(content)) !== null) {
                 const language = match[1] || 'text';
+                const fullMatch = match[0];
                 const codeContent = match[2].trim();
+
+                // Check if this is a forced artifact (contains :artifact in the opening)
+                const isForcedArtifact = fullMatch.includes('```' + language + ':artifact');
 
                 // Count the number of lines in the code block
                 const lineCount = codeContent.split('\n').length;
 
-                // Check if this type should be extracted as artifact AND has more than 100 lines
-                if (artifactTypes.includes(language.toLowerCase()) && lineCount > 100) {
+                // Extract as artifact if:
+                // 1. It's a forced artifact, OR
+                // 2. The type is supported AND has more than 50 lines
+                if (isForcedArtifact || (artifactTypes.includes(language.toLowerCase()) && lineCount > 50)) {
                     const artifactId = `artifact_${Date.now()}_${artifactIndex++}`;
                     const type = language.toLowerCase();
 
                     // Generate a smart title based on content
                     let title = generateArtifactTitle(codeContent, type);
 
+                    // Add prefix for forced artifacts
+                    if (isForcedArtifact) {
+                        title = `📌 ${title}`;
+                    }
+
                     artifacts.push({
                         id: artifactId,
                         type: type,
                         language: language,
                         title: title,
-                        content: codeContent
+                        content: codeContent,
+                        forced: isForcedArtifact
                     });
 
                     // Replace code block with placeholder marker
-                    processedContent = processedContent.replace(match[0],
+                    processedContent = processedContent.replace(fullMatch,
                         `<!-- ARTIFACT:${artifactId} -->`);
                 }
             }
