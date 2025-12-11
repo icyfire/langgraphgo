@@ -87,8 +87,8 @@
             return loadLibrary('mathjax', 'https://cdn.bootcdn.net/ajax/libs/mathjax/3.2.2/es5/tex-svg.js');
         };
     </script>
-    <link rel="stylesheet" href="/static/themes/themes.css">
-    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/themes/themes.css?v=2">
+    <link rel="stylesheet" href="/static/css/main.css?v=2">
 </head>
 
 <body>
@@ -111,32 +111,35 @@
                 <div class="theme-selector-sidebar" id="theme-selector" onclick="showThemeModal()" title="主题设置">
                     <span class="theme-icon">🎨</span>
                 </div>
+                <div class="code-theme-selector-sidebar" id="code-theme-selector" onclick="showCodeThemeModal()" title="代码主题">
+                    <span class="code-theme-icon">💻</span>
+                </div>
                 <div class="settings-btn" id="settings-btn" onclick="toggleSettingsMenu()" title="设置">
                     <span class="settings-icon">⚙️</span>
                 </div>
-                <!-- Settings Dropdown Menu -->
-                <div class="settings-menu" id="settings-menu" style="display: none;">
-                    <div class="settings-menu-item">
-                        <label class="settings-toggle">
-                            <span class="settings-label">启用 Skills</span>
-                            <input type="checkbox" id="user-enable-skills" checked onchange="handleSettingsChange()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="settings-menu-item">
-                        <label class="settings-toggle">
-                            <span class="settings-label">启用 MCP</span>
-                            <input type="checkbox" id="user-enable-mcp" checked onchange="handleSettingsChange()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="settings-menu-item">
-                        <label class="settings-toggle">
-                            <span class="settings-label">流式输出</span>
-                            <input type="checkbox" id="user-enable-streaming" checked onchange="handleSettingsChange()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
+            </div>
+            <!-- Settings Dropdown Menu (outside footer) -->
+            <div class="settings-menu" id="settings-menu" style="display: none;">
+                <div class="settings-menu-item">
+                    <label class="settings-toggle">
+                        <span class="settings-label">启用 Skills</span>
+                        <input type="checkbox" id="user-enable-skills" checked onchange="handleSettingsChange()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-menu-item">
+                    <label class="settings-toggle">
+                        <span class="settings-label">启用 MCP</span>
+                        <input type="checkbox" id="user-enable-mcp" checked onchange="handleSettingsChange()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-menu-item">
+                    <label class="settings-toggle">
+                        <span class="settings-label">流式输出</span>
+                        <input type="checkbox" id="user-enable-streaming" checked onchange="handleSettingsChange()">
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -186,6 +189,112 @@
             </div>
             <div class="artifacts-content" id="artifacts-content">
                 <div class="no-artifacts">No artifacts in this session</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Code Theme Modal -->
+    <div class="modal" id="code-theme-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💻 代码主题</h2>
+                <button class="modal-close" onclick="closeCodeThemeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="theme-section">
+                    <h3>☀️ 浅色主题</h3>
+                    <div class="theme-grid">
+                        <div class="code-theme-option" onclick="setCodeTheme('default')" data-code-theme="default">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+                                <span style="color: #0066cc;">function</span>
+                            </div>
+                            <span>默认</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('github')" data-code-theme="github">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);">
+                                <span style="color: #005cc5;">function</span>
+                            </div>
+                            <span>GitHub</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-light')" data-code-theme="atom-one-light">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);">
+                                <span style="color: #a626a4;">function</span>
+                            </div>
+                            <span>Atom One Light</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('xcode')" data-code-theme="xcode">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%);">
+                                <span style="color: #aa0d91;">function</span>
+                            </div>
+                            <span>Xcode</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('vs')" data-code-theme="vs">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);">
+                                <span style="color: #0000ff;">function</span>
+                            </div>
+                            <span>Visual Studio</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('stackoverflow-light')" data-code-theme="stackoverflow-light">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f6f6f6 100%);">
+                                <span style="color: #0077cc;">function</span>
+                            </div>
+                            <span>Stack Overflow</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="theme-section">
+                    <h3>🌙 深色主题</h3>
+                    <div class="theme-grid">
+                        <div class="code-theme-option" onclick="setCodeTheme('monokai')" data-code-theme="monokai">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #272822 0%, #1e1f1c 100%);">
+                                <span style="color: #66d9ef;">function</span>
+                            </div>
+                            <span>Monokai</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('dracula')" data-code-theme="dracula">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #282a36 0%, #1e1f29 100%);">
+                                <span style="color: #8be9fd;">function</span>
+                            </div>
+                            <span>Dracula</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-dark')" data-code-theme="atom-one-dark">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #282c34 0%, #21252b 100%);">
+                                <span style="color: #c678dd;">function</span>
+                            </div>
+                            <span>Atom One Dark</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('vs2015')" data-code-theme="vs2015">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);">
+                                <span style="color: #569cd6;">function</span>
+                            </div>
+                            <span>VS 2015</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('github-dark')" data-code-theme="github-dark">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);">
+                                <span style="color: #79c0ff;">function</span>
+                            </div>
+                            <span>GitHub Dark</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('nord')" data-code-theme="nord">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #2e3440 0%, #3b4252 100%);">
+                                <span style="color: #88c0d0;">function</span>
+                            </div>
+                            <span>Nord</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('tokyo-night-dark')" data-code-theme="tokyo-night-dark">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #1a1b26 0%, #16161e 100%);">
+                                <span style="color: #7aa2f7;">function</span>
+                            </div>
+                            <span>Tokyo Night</span>
+                        </div>
+                        <div class="code-theme-option" onclick="setCodeTheme('night-owl')" data-code-theme="night-owl">
+                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #011627 0%, #001424 100%);">
+                                <span style="color: #c792ea;">function</span>
+                            </div>
+                            <span>Night Owl</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -344,6 +453,11 @@
 
         function setTheme(themeName) {
             applyTheme(themeName);
+
+            // Auto-switch code theme when main theme changes
+            const isDarkTheme = themeName.includes('dark');
+            autoSwitchCodeTheme(isDarkTheme);
+
             closeThemeModal();
         }
 
@@ -363,6 +477,111 @@
 
         function closeThemeModal() {
             const modal = document.getElementById('theme-modal');
+            modal.classList.remove('show');
+        }
+
+        // Code Theme Management
+        let currentCodeTheme = localStorage.getItem('codeTheme') || 'default';
+
+        // Define light and dark code themes
+        const lightCodeThemes = ['default', 'github', 'atom-one-light', 'xcode', 'vs', 'stackoverflow-light'];
+        const darkCodeThemes = ['monokai', 'dracula', 'atom-one-dark', 'vs2015', 'github-dark', 'nord', 'tokyo-night-dark', 'night-owl'];
+
+        // Apply saved code theme on load
+        function applyCodeTheme(themeName) {
+            // Remove old theme link if exists
+            const oldLink = document.getElementById('code-theme-link');
+            if (oldLink) {
+                oldLink.remove();
+            }
+
+            // Add new theme link
+            if (themeName !== 'default') {
+                const link = document.createElement('link');
+                link.id = 'code-theme-link';
+                link.rel = 'stylesheet';
+                link.href = `https://cdn.bootcdn.net/ajax/libs/highlight.js/11.9.0/styles/${themeName}.min.css`;
+                document.head.appendChild(link);
+            } else {
+                // Use default theme (already loaded in head)
+            }
+
+            currentCodeTheme = themeName;
+            localStorage.setItem('codeTheme', themeName);
+
+            // Update active state in code theme selector
+            document.querySelectorAll('.code-theme-option').forEach(option => {
+                option.classList.remove('active');
+                if (option.dataset.codeTheme === themeName) {
+                    option.classList.add('active');
+                }
+            });
+
+            // Re-highlight all code blocks
+            setTimeout(() => {
+                document.querySelectorAll('pre code').forEach((block) => {
+                    if (typeof hljs !== 'undefined') {
+                        hljs.highlightElement(block);
+                    }
+                });
+            }, 100);
+        }
+
+        function autoSwitchCodeTheme(mainThemeIsDark) {
+            // Auto-switch code theme based on main theme
+            const isCurrentCodeThemeDark = darkCodeThemes.includes(currentCodeTheme);
+
+            if (mainThemeIsDark && !isCurrentCodeThemeDark) {
+                // Switch to dark code theme (use monokai as default)
+                applyCodeTheme('monokai');
+            } else if (!mainThemeIsDark && isCurrentCodeThemeDark) {
+                // Switch to light code theme (use default as default)
+                applyCodeTheme('default');
+            }
+        }
+
+        function setCodeTheme(themeName) {
+            applyCodeTheme(themeName);
+            closeCodeThemeModal();
+        }
+
+        function showCodeThemeModal() {
+            const modal = document.getElementById('code-theme-modal');
+
+            // Determine if current theme is dark or light
+            const isDarkTheme = currentTheme.includes('dark');
+
+            // Update modal title
+            const modalTitle = modal.querySelector('.modal-header h2');
+            modalTitle.textContent = isDarkTheme ? '💻 代码主题 - 深色' : '💻 代码主题 - 浅色';
+
+            // Show/hide theme sections based on current theme
+            const lightSection = modal.querySelector('.theme-section:nth-child(1)');
+            const darkSection = modal.querySelector('.theme-section:nth-child(2)');
+
+            if (isDarkTheme) {
+                // Show only dark code themes
+                lightSection.style.display = 'none';
+                darkSection.style.display = 'block';
+            } else {
+                // Show only light code themes
+                lightSection.style.display = 'block';
+                darkSection.style.display = 'none';
+            }
+
+            // Set active state for current code theme
+            document.querySelectorAll('.code-theme-option').forEach(option => {
+                option.classList.remove('active');
+                if (option.dataset.codeTheme === currentCodeTheme) {
+                    option.classList.add('active');
+                }
+            });
+
+            modal.classList.add('show');
+        }
+
+        function closeCodeThemeModal() {
+            const modal = document.getElementById('code-theme-modal');
             modal.classList.remove('show');
         }
 
@@ -497,6 +716,19 @@
             // Apply saved theme
             applyTheme(currentTheme);
 
+            // Apply saved code theme and ensure it matches the main theme type
+            const isDarkTheme = currentTheme.includes('dark');
+            const isCurrentCodeThemeDark = darkCodeThemes.includes(currentCodeTheme);
+
+            // If code theme doesn't match main theme, auto-switch
+            if (isDarkTheme && !isCurrentCodeThemeDark) {
+                applyCodeTheme('monokai');
+            } else if (!isDarkTheme && isCurrentCodeThemeDark) {
+                applyCodeTheme('default');
+            } else {
+                applyCodeTheme(currentCodeTheme);
+            }
+
             const artifactsSidebar = document.getElementById('artifacts-sidebar');
             if (artifactsSidebar) {
                 artifactsSidebar.classList.add('collapsed');
@@ -550,8 +782,12 @@
                 const sessions = await response.json();
                 sessionsList.innerHTML = '';
 
-                // Filter out sessions with 0 messages
-                const filteredSessions = sessions.filter(session => session.message_count > 0);
+                // Filter out sessions with explicitly 0 messages (but keep sessions where message_count is undefined/null)
+                const filteredSessions = sessions.filter(session =>
+                    session.message_count === undefined ||
+                    session.message_count === null ||
+                    session.message_count > 0
+                );
 
                 if (filteredSessions.length === 0) {
                     // Auto-create first session if none exists
@@ -1879,6 +2115,7 @@
                 const skillsModal = document.getElementById('skills-modal');
                 const mcpModal = document.getElementById('mcp-tools-modal');
                 const themeModal = document.getElementById('theme-modal');
+                const codeThemeModal = document.getElementById('code-theme-modal');
 
                 if (skillsModal.classList.contains('show')) {
                     closeSkillsModal();
@@ -1889,6 +2126,9 @@
                 if (themeModal.classList.contains('show')) {
                     closeThemeModal();
                 }
+                if (codeThemeModal.classList.contains('show')) {
+                    closeCodeThemeModal();
+                }
             }
         });
 
@@ -1896,6 +2136,12 @@
         document.getElementById('theme-modal').addEventListener('click', (e) => {
             if (e.target === e.currentTarget) {
                 closeThemeModal();
+            }
+        });
+
+        document.getElementById('code-theme-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                closeCodeThemeModal();
             }
         });
     </script>
