@@ -219,10 +219,6 @@ go test ./... -v
 
 This project is open for contributions! if you are interested in being a contributor please create feature issues first, then submit PRs..	
 
-<a href="https://github.com/smallnest/langgraphgo/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=smallnest/langgraphgo" />
-</a>
-
 
 ## 📄 License
 

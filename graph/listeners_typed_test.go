@@ -150,6 +150,61 @@ func TestListenableNodeTyped_RemoveListenerByFunc(t *testing.T) {
 	}
 }
 
+func TestListenableNodeTyped_GetListenerIDs(t *testing.T) {
+	ln := NewListenableNodeTyped(NodeTyped[TestListenerState]{
+		Name: "test",
+		Function: func(ctx context.Context, state TestListenerState) (TestListenerState, error) {
+			return state, nil
+		},
+	})
+
+	// Initially should have no listeners
+	ids := ln.GetListenerIDs()
+	if len(ids) != 0 {
+		t.Errorf("Expected 0 listener IDs initially, got %d", len(ids))
+	}
+
+	// Add listeners
+	listener1 := NodeListenerTypedFunc[TestListenerState](func(ctx context.Context, event NodeEvent, nodeName string, state TestListenerState, err error) {})
+	listener2 := NodeListenerTypedFunc[TestListenerState](func(ctx context.Context, event NodeEvent, nodeName string, state TestListenerState, err error) {})
+
+	ln.AddListener(listener1)
+	ln.AddListener(listener2)
+
+	// Should have 2 listener IDs
+	ids = ln.GetListenerIDs()
+	if len(ids) != 2 {
+		t.Errorf("Expected 2 listener IDs, got %d", len(ids))
+	}
+
+	// IDs should be unique
+	if ids[0] == ids[1] {
+		t.Error("Listener IDs should be unique")
+	}
+
+	// IDs should follow expected pattern
+	if !matchPattern(ids[0], "listener_") {
+		t.Errorf("Expected ID to start with 'listener_', got '%s'", ids[0])
+	}
+	if !matchPattern(ids[1], "listener_") {
+		t.Errorf("Expected ID to start with 'listener_', got '%s'", ids[1])
+	}
+
+	// Remove one listener
+	ln.RemoveListener(ids[0])
+	ids = ln.GetListenerIDs()
+	if len(ids) != 1 {
+		t.Errorf("Expected 1 listener ID after removal, got %d", len(ids))
+	}
+}
+
+func matchPattern(id, prefix string) bool {
+	if len(id) < len(prefix)+1 {
+		return false
+	}
+	return id[:len(prefix)] == prefix
+}
+
 func TestListenableNodeTyped_NotifyListeners(t *testing.T) {
 	var mu sync.Mutex
 	var events []string
@@ -657,5 +712,84 @@ func TestStreamingListenerTyped_OnNodeEvent(t *testing.T) {
 		}
 	default:
 		t.Error("Should have received an event")
+	}
+}
+
+func TestListenableRunnableTyped_Stream(t *testing.T) {
+	g := NewListenableStateGraphTyped[TestListenerState]()
+
+	// Add a simple node
+	g.AddNode("process", "Process", func(ctx context.Context, state TestListenerState) (TestListenerState, error) {
+		state.Count++
+		state.Step = "processed"
+		return state, nil
+	})
+
+	g.SetEntryPoint("process")
+	g.AddEdge("process", END)
+
+	runnable, err := g.CompileListenable()
+	if err != nil {
+		t.Fatalf("Failed to compile: %v", err)
+	}
+
+	ctx := context.Background()
+	initialState := TestListenerState{Name: "test", Count: 0}
+
+	// Test streaming
+	eventChan := runnable.Stream(ctx, initialState)
+
+	// Collect events
+	var events []StreamEventTyped[TestListenerState]
+	timeout := time.After(100 * time.Millisecond)
+
+	for {
+		select {
+		case event, ok := <-eventChan:
+			if !ok {
+				// Channel closed
+				goto done
+			}
+			events = append(events, event)
+		case <-timeout:
+			t.Error("Stream timed out")
+			goto done
+		}
+	}
+
+done:
+	// Should have at least 2 events (chain start and chain end)
+	if len(events) < 2 {
+		t.Errorf("Expected at least 2 events, got %d", len(events))
+	}
+
+	// Check first event is chain start
+	if events[0].Event != EventChainStart {
+		t.Errorf("Expected first event to be EventChainStart, got %v", events[0].Event)
+	}
+
+	// Check last event is chain end
+	if events[len(events)-1].Event != EventChainEnd {
+		t.Errorf("Expected last event to be EventChainEnd, got %v", events[len(events)-1].Event)
+	}
+}
+
+func TestListenableRunnableTyped_GetGraph(t *testing.T) {
+	g := NewListenableStateGraphTyped[TestListenerState]()
+	g.AddNode("test", "Test", func(ctx context.Context, state TestListenerState) (TestListenerState, error) {
+		return state, nil
+	})
+	g.SetEntryPoint("test")
+	g.AddEdge("test", END)
+
+	runnable, err := g.CompileListenable()
+	if err != nil {
+		t.Fatalf("Failed to compile: %v", err)
+	}
+
+	// GetGraph should return nil for typed graphs (as noted in the comment)
+	graph := runnable.GetGraph()
+	if graph != nil {
+		t.Error("GetGraph should return nil for typed graphs")
 	}
 }

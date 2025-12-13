@@ -319,6 +319,7 @@ func TestChatAgent_AsyncChatWithContext(t *testing.T) {
 
 	// Create a context that we can cancel
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cancel is always called to avoid context leak
 
 	// Test AsyncChat
 	respChan, err := agent.AsyncChat(ctx, "Hi")
@@ -332,7 +333,7 @@ func TestChatAgent_AsyncChatWithContext(t *testing.T) {
 		_ = chunk
 		chunksReceived++
 		if chunksReceived >= 5 {
-			cancel() // Cancel the context
+			cancel() // Cancel the context early
 			break
 		}
 	}
