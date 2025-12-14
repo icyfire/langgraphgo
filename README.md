@@ -14,7 +14,7 @@ Website: [http://lango.rpcx.io](http://lango.rpcx.io)
 >
 > This fork aims for **feature parity with the Python LangGraph library**, adding support for parallel execution, persistence, advanced state management, pre-built agents, and human-in-the-loop workflows.
 
-## test coverage
+## Test coverage
 
 ![](coverage.svg)
 
@@ -29,10 +29,12 @@ go get github.com/smallnest/langgraphgo
 - **Core Runtime**:
     - **Parallel Execution**: Concurrent node execution (fan-out) with thread-safe state merging.
     - **Runtime Configuration**: Propagate callbacks, tags, and metadata via `RunnableConfig`.
+    - **Generic Types**: Type-safe state management with generic StateGraph implementations.
     - **LangChain Compatible**: Works seamlessly with `langchaingo`.
 
 - **Persistence & Reliability**:
-    - **Checkpointers**: Redis, Postgres, and SQLite implementations for durable state.
+    - **Checkpointers**: Redis, Postgres, SQLite, and File implementations for durable state.
+    - **File Checkpointing**: Lightweight file-based checkpointing without external dependencies.
     - **State Recovery**: Pause and resume execution from checkpoints.
 
 - **Advanced Capabilities**:
@@ -132,6 +134,10 @@ func main() {
 - **[PTC Basic](./examples/ptc_basic/)** - Programmatic Tool Calling for reduced latency (New!)
 - **[PTC Simple](./examples/ptc_simple/)** - Simple PTC example with calculator tools (New!)
 - **[PTC Expense Analysis](./examples/ptc_expense_analysis/)** - Complex PTC scenario with data processing (New!)
+- **[Tree of Thoughts](./examples/tree_of_thoughts/)** - Advanced reasoning with search tree exploration (New!)
+- **[PEV Agent](./examples/pev_agent/)** - Problem-Evidence-Verification agent (New!)
+- **[File Checkpointing](./examples/file_checkpointing/)** - File-based checkpointing (New!)
+- **[Generic State Graph](./examples/generic_state_graph/)** - Type-safe generic state management (New!)
 
 ## 🔧 Key Concepts
 

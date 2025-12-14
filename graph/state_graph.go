@@ -255,11 +255,6 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState any, 
 		// Update currentNodes
 		currentNodes = nextNodesList
 
-		// Cleanup ephemeral state if supported
-		if cleaningSchema, ok := r.graph.Schema.(CleaningStateSchema); ok {
-			state = cleaningSchema.Cleanup(state)
-		}
-
 		// Notify callbacks of step completion
 		if config != nil && len(config.Callbacks) > 0 {
 			for _, cb := range config.Callbacks {

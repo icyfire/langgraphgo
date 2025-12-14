@@ -1,6 +1,28 @@
 # 更新日志
 
-## [未发布] - 2025-12-08
+## [未发布] - 2025-12-14
+
+### 核心特性
+- **泛型类型 (Generic Types)**: 泛型支持的重要里程碑 (#48)
+  - 添加泛型 StateGraph 实现，支持类型安全的状态管理
+  - 将代码库中的 `interface{}` 替换为 `any`
+  - 增强 ListenableRunnable 的泛型支持
+
+### 检查点
+- **文件检查点存储 (File Checkpoint Store)**: 实现基于文件的检查点 (#46)
+  - 添加 `FileCheckpointStore` 用于本地文件系统的持久化状态存储
+  - 支持从文件崩溃恢复和执行恢复
+  - 无外部依赖的轻量级检查点解决方案
+
+### 代码质量与测试
+- **提升测试覆盖率**: 大幅增加各模块的单元测试覆盖率：
+  - RAG LangChain 适配器
+  - Supervisor 类型化实现
+  - PostgreSQL 检查点
+  - ReAct 代理
+- **日志实现**: 添加 golog 日志实现，提供更好的调试和监控
+- **文档**: 为更好的包文档添加全面的 `doc.go` 文件
+- **Lint 修复**: 解决各种 linting 问题，使代码更整洁
 
 ### 示例与模式
 - **[思维树 (Tree of Thoughts)](./examples/tree_of_thoughts/)**: 使用搜索树探索的高级推理框架
@@ -16,7 +38,14 @@
   - 解决方案验证机制
   - 支持 https://profile.rpcx.io 项目个人资料生成展示
 
+### 重构
+- **MessageGraph 移除**: 移除 MessageGraph 特殊类型 (#43, #44)
+  - 将 MessageGraph 功能合并到 StateGraph 以获得更好的一致性
+  - 移除冗余的 `NewMessagesStateGraph` 方法简化 API
+  - 更新 ListenableStateGraph 结构以获得更好的可维护性
+
 ### 错误修复与改进
+- 修复并发执行场景中的竞态条件
 - 修复并行执行场景中的 duration_execution 错误
 - 增强了 GitHub Actions CI/CD，更新了 golangci-lint 版本
 - 提高单元测试可靠性
@@ -150,7 +179,6 @@
 ### 高级状态与流式处理 (Advanced State & Streaming)
 - **状态管理**: 引入了 `Schema` 接口和 `Annotated` 风格的归约器 (Reducers)（例如 `AppendMessages`），用于复杂的状态更新。
 - **智能消息 (Smart Messages)**: 实现了 `AddMessages` 归约器，用于基于 ID 的消息更新 (Upsert) 和去重。
-- **临时通道 (Ephemeral Channels)**: 添加了对临时状态值 (`isEphemeral`) 的支持，这些值在每步后自动清除。
 - **增强流式处理**: 添加了类型化的 `StreamEvent` 和 `CallbackHandler` 接口。实现了多种流式模式：`updates`, `values`, `messages`, 和 `debug`。
 
 ### 预构建代理 (Pre-built Agents)

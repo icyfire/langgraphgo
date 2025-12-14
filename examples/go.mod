@@ -5,6 +5,7 @@ go 1.25.0
 replace github.com/smallnest/langgraphgo => ../
 
 require (
+	github.com/kataras/golog v0.1.15
 	github.com/smallnest/goskills v0.3.5
 	github.com/smallnest/langgraphgo v0.0.0-00010101000000-000000000000
 	github.com/tmc/langchaingo v0.1.14

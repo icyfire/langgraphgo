@@ -18,40 +18,22 @@ type StateSchema interface {
 	Update(current, new any) (any, error)
 }
 
-// CleaningStateSchema extends StateSchema with cleanup capabilities.
-// This allows implementing ephemeral channels (values that are cleared after each step).
-type CleaningStateSchema interface {
-	StateSchema
-	// Cleanup performs any necessary cleanup on the state after a step.
-	Cleanup(state any) any
-}
-
 // MapSchema implements StateSchema for map[string]any.
 // It allows defining reducers for specific keys.
 type MapSchema struct {
-	Reducers      map[string]Reducer
-	EphemeralKeys map[string]bool
+	Reducers map[string]Reducer
 }
 
 // NewMapSchema creates a new MapSchema.
 func NewMapSchema() *MapSchema {
 	return &MapSchema{
-		Reducers:      make(map[string]Reducer),
-		EphemeralKeys: make(map[string]bool),
+		Reducers: make(map[string]Reducer),
 	}
 }
 
 // RegisterReducer adds a reducer for a specific key.
 func (s *MapSchema) RegisterReducer(key string, reducer Reducer) {
 	s.Reducers[key] = reducer
-}
-
-// RegisterChannel adds a channel definition (reducer + ephemeral flag).
-func (s *MapSchema) RegisterChannel(key string, reducer Reducer, isEphemeral bool) {
-	s.Reducers[key] = reducer
-	if isEphemeral {
-		s.EphemeralKeys[key] = true
-	}
 }
 
 // Init returns an empty map.
@@ -97,43 +79,6 @@ func (s *MapSchema) Update(current, new any) (any, error) {
 	}
 
 	return result, nil
-}
-
-// Cleanup removes ephemeral keys from the state.
-func (s *MapSchema) Cleanup(state any) any {
-	if len(s.EphemeralKeys) == 0 {
-		return state
-	}
-
-	mState, ok := state.(map[string]any)
-	if !ok {
-		return state
-	}
-
-	// Create a copy to avoid mutation if needed, or just delete from map if we own it?
-	// Since Update returns a new map, we can probably modify it in place if we are the only owner.
-	// But to be safe and functional, let's copy if we modify.
-
-	// Optimization: check if any ephemeral key exists
-	hasEphemeral := false
-	for k := range s.EphemeralKeys {
-		if _, exists := mState[k]; exists {
-			hasEphemeral = true
-			break
-		}
-	}
-
-	if !hasEphemeral {
-		return state
-	}
-
-	result := make(map[string]any, len(mState))
-	for k, v := range mState {
-		if !s.EphemeralKeys[k] {
-			result[k] = v
-		}
-	}
-	return result
 }
 
 // Common Reducers

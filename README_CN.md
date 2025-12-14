@@ -28,10 +28,12 @@ go get github.com/smallnest/langgraphgo
 - **核心运行时**:
     - **并行执行**: 支持节点的并发执行（扇出），并具备线程安全的状态合并。
     - **运行时配置**: 通过 `RunnableConfig` 传播回调、标签和元数据。
+    - **泛型类型 (Generic Types)**: 支持泛型 StateGraph 实现的类型安全状态管理。
     - **LangChain 兼容**: 与 `langchaingo` 无缝协作。
 
 - **持久化与可靠性**:
-    - **Checkpointers**: 提供 Redis、Postgres 和 SQLite 实现，用于持久化状态。
+    - **Checkpointers**: 提供 Redis、Postgres、SQLite 和文件实现，用于持久化状态。
+    - **文件检查点**: 轻量级的基于文件的检查点，无需外部依赖。
     - **状态恢复**: 支持从 Checkpoint 暂停和恢复执行。
 
 - **高级能力**:
@@ -131,6 +133,10 @@ func main() {
 - **[PTC Basic](./examples/ptc_basic/)** - 程序化工具调用，降低延迟 (新增!)
 - **[PTC Simple](./examples/ptc_simple/)** - PTC 简单示例，包含计算器工具 (新增!)
 - **[PTC Expense Analysis](./examples/ptc_expense_analysis/)** - PTC 复杂场景，数据处理 (新增!)
+- **[思维树 (Tree of Thoughts)](./examples/tree_of_thoughts/)** - 高级推理与搜索树探索 (新增!)
+- **[PEV Agent](./examples/pev_agent/)** - 问题-证据-验证代理 (新增!)
+- **[文件检查点 (File Checkpointing)](./examples/file_checkpointing/)** - 基于文件的检查点 (新增!)
+- **[泛型状态图 (Generic State Graph)](./examples/generic_state_graph/)** - 类型安全的泛型状态管理 (新增!)
 
 ## 🔧 核心概念
 

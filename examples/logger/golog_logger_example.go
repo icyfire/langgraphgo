@@ -30,4 +30,8 @@ func main() {
 	logger3 := log.NewGologLogger(errorLogger)
 	logger3.Debug("这条不会显示")
 	logger3.Error("错误信息会显示")
+
+	log.SetDefaultLogger(logger1)
+	log.Info("使用默认 golog logger")
+	log.Debug("调试信息")
 }

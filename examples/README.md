@@ -14,15 +14,15 @@ This directory contains various examples demonstrating the features of LangGraph
 - **[Configuration](configuration/README.md)**: Using runtime configuration to pass metadata and settings.
 - **[Custom Reducer](custom_reducer/README.md)**: Defining custom state reducers for complex merge logic.
 - **[State Schema](state_schema/README.md)**: Managing complex state updates with Schema and Reducers.
-- **[Subgraphs](subgraphs/README.md)**: Composing graphs within graphs (New).
+- **[Subgraphs](subgraph/README.md)**: Composing graphs within graphs.
+- **[Multiple Subgraphs](subgraphs/)**: Managing multiple subgraph compositions.
 - **[Streaming Modes](streaming_modes/README.md)**: Advanced streaming with updates, values, and messages modes.
 - **[Smart Messages](smart_messages/README.md)**: Intelligent message merging with ID-based upserts.
 - **[Command API](command_api/README.md)**: Dynamic control flow and state updates from nodes.
-- **[Ephemeral Channels](ephemeral_channels/README.md)**: Managing temporary state that clears after each step.
 - **[Listeners](listeners/README.md)**: Attaching event listeners to the graph.
 
 ## Persistence (Checkpointing)
-- **[Memory](checkpointing/main.go)**: In-memory checkpointing.
+- **[Memory](memory_basic/main.go)**: In-memory checkpointing.
 - **[PostgreSQL](checkpointing/postgres/)**: Persistent state using PostgreSQL.
 - **[SQLite](checkpointing/sqlite/)**: Persistent state using SQLite.
 - **[Redis](checkpointing/redis/)**: Persistent state using Redis.
@@ -76,5 +76,13 @@ This directory contains various examples demonstrating the features of LangGraph
 - **[LangChain Integration](langchain_example/README.md)**: Using LangChain tools and models.
 - **[Tavily Search](tool_tavily/README.md)**: Using Tavily search tool with ReAct agent.
 - **[Exa Search](tool_exa/README.md)**: Using Exa search tool with ReAct agent.
+- **[Brave Search](tool_brave/README.md)**: Using Brave search API with agents.
 - **[GoSkills Integration](goskills_example/README.md)**: Integrating GoSkills as tools for agents.
 - **[MCP Agent](mcp_agent/README.md)**: Using Model Context Protocol (MCP) tools with agents.
+- **[Context Store](context_store/README.md)**: Managing context with external stores.
+- **[Streaming Pipeline](streaming_pipeline/README.md)**: Building streaming data processing pipelines.
+- **[Generic State Graph](generic_state_graph/)**: Using generic types for type-safe state management.
+- **[Generic State Graph Listenable](generic_state_graph_listenable/)**: Generic state graph with event listening capabilities.
+- **[Generic State Graph ReAct Agent](generic_state_graph_react_agent/)**: ReAct agent implementation using generic types.
+- **[File Checkpointing](file_checkpointing/)**: Checkpointing to file system.
+- **[File Checkpointing Resume](file_checkpointing_resume/)**: Resuming execution from file checkpoints.

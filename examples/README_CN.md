@@ -14,11 +14,11 @@
 - **[配置 (Configuration)](configuration/README_CN.md)**: 使用运行时配置传递元数据和设置。
 - **[自定义归约器 (Custom Reducer)](custom_reducer/README_CN.md)**: 为复杂的合并逻辑定义自定义状态归约器。
 - **[State Schema](state_schema/README_CN.md)**: 使用 Schema 和 Reducer 管理复杂的状态更新。
-- **[子图 (Subgraphs)](subgraphs/README_CN.md)**: 在图中组合图 (新)。
+- **[子图 (Subgraphs)](subgraph/README_CN.md)**: 在图中组合图。
+- **[Multiple Subgraphs](subgraphs/)**: 管理多个子图组合。
 - **[流式模式 (Streaming Modes)](streaming_modes/README_CN.md)**: 支持 updates, values, messages 等模式的高级流式处理。
 - **[智能消息 (Smart Messages)](smart_messages/README_CN.md)**: 支持基于 ID 更新 (Upsert) 的智能消息合并。
 - **[Command API](command_api/README_CN.md)**: 节点级的动态流控制和状态更新。
-- **[临时通道 (Ephemeral Channels)](ephemeral_channels/README_CN.md)**: 管理每步后自动清除的临时状态。
 - **[监听器 (Listeners)](listeners/README_CN.md)**: 向图添加事件监听器。
 
 ## 持久化 (检查点 Checkpointing)
@@ -76,5 +76,13 @@
 - **[LangChain 集成 (LangChain Integration)](langchain_example/README_CN.md)**: 使用 LangChain 工具和模型。
 - **[Tavily Search](tool_tavily/README_CN.md)**: 使用 Tavily 搜索工具和 ReAct Agent。
 - **[Exa Search](tool_exa/README_CN.md)**: 使用 Exa 搜索工具和 ReAct Agent。
+- **[Brave Search](tool_brave/README_CN.md)**: 使用 Brave 搜索 API 的 Agent。
 - **[GoSkills 集成 (GoSkills Integration)](goskills_example/README_CN.md)**: 将 GoSkills 作为工具集成到 Agent 中。
 - **[MCP Agent](mcp_agent/README_CN.md)**: 在 Agent 中使用 Model Context Protocol (MCP) 工具。
+- **[Context Store](context_store/README.md)**: 使用外部存储管理上下文。
+- **[Streaming Pipeline](streaming_pipeline/README_CN.md)**: 构建流式数据处理管道。
+- **[Generic State Graph](generic_state_graph/)**: 使用泛型实现类型安全的状态管理。
+- **[Generic State Graph Listenable](generic_state_graph_listenable/)**: 带有事件监听功能的泛型状态图。
+- **[Generic State Graph ReAct Agent](generic_state_graph_react_agent/)**: 使用泛型实现的 ReAct Agent。
+- **[File Checkpointing](file_checkpointing/)**: 文件系统检查点。
+- **[File Checkpointing Resume](file_checkpointing_resume/)**: 从文件检查点恢复执行。

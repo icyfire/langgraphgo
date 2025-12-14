@@ -14,13 +14,6 @@ type StateSchemaTyped[S any] interface {
 	Update(current, new S) (S, error)
 }
 
-// CleaningStateSchemaTyped extends StateSchemaTyped with cleanup capabilities.
-// This allows implementing ephemeral channels (values that are cleared after each step).
-type CleaningStateSchemaTyped[S any] interface {
-	StateSchemaTyped[S]
-	// Cleanup performs any necessary cleanup on the state after a step.
-	Cleanup(state S) S
-}
 
 // StructSchema implements StateSchemaTyped for struct-based states.
 // It provides a simple and type-safe way to manage struct states.

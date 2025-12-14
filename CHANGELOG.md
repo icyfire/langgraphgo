@@ -1,6 +1,28 @@
 # Changelog
 
-## [Unreleased] - 2025-12-08
+## [Unreleased] - 2025-12-14
+
+### Core Features
+- **Generic Types**: Major milestone for generic type support (#48)
+  - Added generic StateGraph implementations for type-safe state management
+  - Replaced `interface{}` with `any` throughout the codebase
+  - Enhanced ListenableRunnable with generic support
+
+### Checkpointing
+- **File Checkpoint Store**: Implemented file-based checkpointing (#46)
+  - Added `FileCheckpointStore` for persistent state storage on local filesystem
+  - Support for crash recovery and execution resumption from files
+  - Simple and lightweight checkpointing solution without external dependencies
+
+### Code Quality & Testing
+- **Improved Test Coverage**: Significantly increased unit test coverage across modules:
+  - RAG LangChain adapter
+  - Supervisor typed implementations
+  - PostgreSQL checkpointing
+  - ReAct agent
+- **Logger Implementation**: Added golog logger implementation for better debugging and monitoring
+- **Documentation**: Added comprehensive `doc.go` files for better package documentation
+- **Lint Fixes**: Resolved various linting issues for cleaner code
 
 ### Examples & Patterns
 - **[Tree of Thoughts](./examples/tree_of_thoughts/)**: Advanced reasoning framework using search tree exploration
@@ -16,7 +38,14 @@
   - Verification mechanism for solution validation
   - Support showcase for https://profile.rpcx.io project profile generation
 
+### Refactoring
+- **MessageGraph Removal**: Removed MessageGraph as a special type (#43, #44)
+  - Merged MessageGraph features into StateGraph for better consistency
+  - Simplified API by removing redundant `NewMessagesStateGraph` method
+  - Updated ListenableStateGraph structure for better maintainability
+
 ### Bug Fixes & Improvements
+- Fixed race conditions in concurrent execution scenarios
 - Fixed duration_execution bug in parallel execution scenarios
 - Enhanced GitHub Actions CI/CD with updated golangci-lint versions
 - Improved unit test reliability
@@ -150,7 +179,6 @@
 ### Advanced State & Streaming
 - **State Management**: Introduced `Schema` interface and `Annotated` style reducers (e.g., `AppendMessages`) for complex state updates.
 - **Smart Messages**: Implemented `AddMessages` reducer for ID-based message upserts and deduplication.
-- **Ephemeral Channels**: Added support for temporary state values (`isEphemeral`) that are automatically cleared after each step.
 - **Enhanced Streaming**: Added typed `StreamEvent`s and `CallbackHandler` interface. Implemented multiple streaming modes: `updates`, `values`, `messages`, and `debug`.
 
 ### Pre-built Agents

@@ -146,14 +146,16 @@ func main() {
 
 	// Demonstrate streaming
 	fmt.Println("\n\n--- Streaming Example ---")
+
+	// Create a streaming listener and add it to the workflow BEFORE compiling
+	streamingListener := &StreamingCounterListener{}
+	workflow.AddGlobalListener(streamingListener)
+
+	// Now compile the graph
 	streamingRunnable, err := workflow.CompileListenable()
 	if err != nil {
 		log.Fatalf("Failed to compile streaming graph: %v", err)
 	}
-
-	// Create a streaming listener
-	streamingListener := &StreamingCounterListener{}
-	streamingRunnable.graph.AddGlobalListener(streamingListener)
 
 	// Execute with streaming
 	fmt.Println("🎬 Starting streaming execution...")
