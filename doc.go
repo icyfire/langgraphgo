@@ -54,14 +54,14 @@
 //
 // # Key Features
 //
-//   - *Stateful Graphs*: Define complex workflows with state persistence
-//   - *Agent Orchestration*: Build multi-agent systems with specialized roles
-//   - *Checkpointing*: Save and resume execution state
-//   - *Streaming*: Real-time event streaming during execution
-//   - *Memory Management*: Various strategies for conversation memory
-//   - *Tool Integration*: Extensive ecosystem of built-in tools
-//   - *Type Safety*: Generic-based typed graphs for compile-time safety
-//   - *Visualization*: Graph visualization and debugging tools
+//   - Stateful Graphs: Define complex workflows with state persistence
+//   - Agent Orchestration: Build multi-agent systems with specialized roles
+//   - Checkpointing: Save and resume execution state
+//   - Streaming: Real-time event streaming during execution
+//   - Memory Management: Various strategies for conversation memory
+//   - Tool Integration: Extensive ecosystem of built-in tools
+//   - Type Safety: Generic-based typed graphs for compile-time safety
+//   - Visualization: Graph visualization and debugging tools
 //
 // # Core Concepts
 //
@@ -76,9 +76,9 @@
 //
 // State can be managed in different ways:
 //
-//   - *Untyped*: Using map[string]any for flexibility
-//   - *Typed*: Using Go generics for type safety
-//   - *Structured*: Using predefined schemas
+//   - Untyped: Using map[string]any for flexibility
+//   - Typed: Using Go generics for type safety
+//   - Structured: Using predefined schemas
 //
 // # Package Structure
 //
@@ -108,11 +108,11 @@
 // Ready-to-use agent implementations
 //
 // Types of agents:
-//   - *ReAct Agent*: Reason and act pattern
-//   - *Supervisor Agent*: Orchestrates multiple agents
-//   - *Planning Agent*: Creates and executes plans
-//   - *Reflection Agent*: Self-correcting agent
-//   - *Tree of Thoughts*: Multi-path reasoning
+//   - ReAct Agent: Reason and act pattern
+//   - Supervisor Agent: Orchestrates multiple agents
+//   - Planning Agent: Creates and executes plans
+//   - Reflection Agent: Self-correcting agent
+//   - Tree of Thoughts: Multi-path reasoning
 //
 // Example:
 //
@@ -383,22 +383,22 @@
 //
 // # Best Practices
 //
-//  1. *Choose the right agent type* for your use case
+//  1. Choose the right agent type for your use case
 //     - ReAct for general tasks
 //     - Supervisor for multi-agent workflows
 //     - PTC for complex tool interactions
 //
-//  2. *Use typed graphs* when possible for better type safety
+//  2. Use typed graphs when possible for better type safety
 //
-//  3. *Implement proper error handling* in all node functions
+//  3. Implement proper error handling in all node functions
 //
-//  4. *Add checkpoints* for long-running or critical workflows
+//  4. Add checkpoints for long-running or critical workflows
 //
-//  5. *Use appropriate memory* strategy for conversations
+//  5. Use appropriate memory strategy for conversations
 //
-//  6. *Monitor execution* with listeners and logging
+//  6. Monitor execution with listeners and logging
 //
-//  7. *Test thoroughly* with various input scenarios
+//  7. Test thoroughly with various input scenarios
 //
 // # Configuration
 //
