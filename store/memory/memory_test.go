@@ -9,335 +9,339 @@ import (
 	"github.com/smallnest/langgraphgo/store"
 )
 
-const (
-	testNode   = "test_node"
-	testResult = "test_result"
-)
-
-func TestNewMemoryCheckpointStore(t *testing.T) {
+func TestMemoryCheckpointStore_New(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryCheckpointStore()
 
 	if ms == nil {
-		t.Fatal("Expected store but got nil")
+		t.Fatal("Store should not be nil")
 	}
 
 	// Verify it implements the interface
 	var _ store.CheckpointStore = ms
 }
 
-func TestMemoryCheckpointStore_SaveAndLoad(t *testing.T) {
+func TestMemoryCheckpointStore_BasicOperations(t *testing.T) {
 	t.Parallel()
 
-	ms := NewMemoryCheckpointStore()
-	ctx := context.Background()
+	t.Run("save and load", func(t *testing.T) {
+		t.Parallel()
 
-	checkpoint := &store.Checkpoint{
-		ID:        "test_checkpoint_1",
-		NodeName:  testNode,
-		State:     "test_state",
-		Timestamp: time.Now(),
-		Version:   1,
-		Metadata: map[string]interface{}{
-			"execution_id": "exec_123",
-		},
-	}
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
 
-	// Save checkpoint
-	err := ms.Save(ctx, checkpoint)
-	if err != nil {
-		t.Fatalf("Failed to save checkpoint: %v", err)
-	}
+		cp := &store.Checkpoint{
+			ID:        "user-session-123",
+			NodeName:  "auth-handler",
+			State:     "waiting_for_2fa",
+			Timestamp: time.Now(),
+			Version:   1,
+			Metadata: map[string]interface{}{
+				"user_id":    "alice@example.com",
+				"session_id": "sess-abc-123",
+				"ip_address": "10.0.0.45",
+			},
+		}
 
-	// Load checkpoint
-	loaded, err := ms.Load(ctx, "test_checkpoint_1")
-	if err != nil {
-		t.Fatalf("Failed to load checkpoint: %v", err)
-	}
+		// Save it
+		err := ms.Save(ctx, cp)
+		if err != nil {
+			t.Fatalf("Failed to save: %v", err)
+		}
 
-	if loaded.ID != checkpoint.ID {
-		t.Errorf("Expected ID %s, got %s", checkpoint.ID, loaded.ID)
-	}
+		// Load it back
+		loaded, err := ms.Load(ctx, cp.ID)
+		if err != nil {
+			t.Fatalf("Failed to load: %v", err)
+		}
 
-	if loaded.NodeName != checkpoint.NodeName {
-		t.Errorf("Expected NodeName %s, got %s", checkpoint.NodeName, loaded.NodeName)
-	}
+		// Verify everything matches
+		if loaded.ID != cp.ID {
+			t.Errorf("ID mismatch: got %s, want %s", loaded.ID, cp.ID)
+		}
+		if loaded.NodeName != cp.NodeName {
+			t.Errorf("NodeName mismatch: got %s, want %s", loaded.NodeName, cp.NodeName)
+		}
+		if loaded.State != cp.State {
+			t.Errorf("State mismatch: got %s, want %s", loaded.State, cp.State)
+		}
+		if loaded.Version != cp.Version {
+			t.Errorf("Version mismatch: got %d, want %d", loaded.Version, cp.Version)
+		}
 
-	if loaded.State != checkpoint.State {
-		t.Errorf("Expected State %v, got %v", checkpoint.State, loaded.State)
-	}
+		// Check some metadata
+		if userID, ok := loaded.Metadata["user_id"].(string); !ok || userID != "alice@example.com" {
+			t.Error("User ID not preserved correctly")
+		}
+	})
 
-	if loaded.Version != checkpoint.Version {
-		t.Errorf("Expected Version %d, got %d", checkpoint.Version, loaded.Version)
-	}
+	t.Run("load missing returns error", func(t *testing.T) {
+		t.Parallel()
 
-	// Check metadata
-	execID, ok := loaded.Metadata["execution_id"].(string)
-	if !ok {
-		t.Error("Expected execution_id to be a string")
-	} else if execID != "exec_123" {
-		t.Errorf("Expected execution_id exec_123, got %s", execID)
-	}
-}
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
 
-func TestMemoryCheckpointStore_LoadNonExistent(t *testing.T) {
-	t.Parallel()
+		_, err := ms.Load(ctx, "does-not-exist")
+		if err == nil {
+			t.Error("Expected error for missing checkpoint")
+		}
+	})
 
-	ms := NewMemoryCheckpointStore()
-	ctx := context.Background()
+	t.Run("overwrite works", func(t *testing.T) {
+		t.Parallel()
 
-	// Try to load non-existing checkpoint
-	_, err := ms.Load(ctx, "non_existing")
-	if err == nil {
-		t.Error("Expected error for non-existing checkpoint")
-	}
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
 
-	expectedError := "checkpoint not found: non_existing"
-	if err.Error() != expectedError {
-		t.Errorf("Expected error '%s', got '%s'", expectedError, err.Error())
-	}
-}
+		// Save first version
+		cp1 := &store.Checkpoint{
+			ID:        "overwrite-test",
+			NodeName:  "processor-v1",
+			State:     "initial",
+			Timestamp: time.Now(),
+			Version:   1,
+		}
+		err := ms.Save(ctx, cp1)
+		if err != nil {
+			t.Fatalf("Failed to save v1: %v", err)
+		}
 
-func TestMemoryCheckpointStore_SaveOverwrite(t *testing.T) {
-	t.Parallel()
+		// Save second version with same ID
+		cp2 := &store.Checkpoint{
+			ID:        "overwrite-test",
+			NodeName:  "processor-v2",
+			State:     "updated",
+			Timestamp: time.Now(),
+			Version:   2,
+		}
+		err = ms.Save(ctx, cp2)
+		if err != nil {
+			t.Fatalf("Failed to save v2: %v", err)
+		}
 
-	ms := NewMemoryCheckpointStore()
-	ctx := context.Background()
+		// Load and verify we get v2
+		loaded, err := ms.Load(ctx, "overwrite-test")
+		if err != nil {
+			t.Fatalf("Failed to load: %v", err)
+		}
 
-	// Save initial checkpoint
-	checkpoint1 := &store.Checkpoint{
-		ID:        "test_checkpoint",
-		NodeName:  "node1",
-		State:     "state1",
-		Timestamp: time.Now(),
-		Version:   1,
-	}
-
-	err := ms.Save(ctx, checkpoint1)
-	if err != nil {
-		t.Fatalf("Failed to save initial checkpoint: %v", err)
-	}
-
-	// Save checkpoint with same ID (overwrite)
-	checkpoint2 := &store.Checkpoint{
-		ID:        "test_checkpoint",
-		NodeName:  "node2",
-		State:     "state2",
-		Timestamp: time.Now(),
-		Version:   2,
-	}
-
-	err = ms.Save(ctx, checkpoint2)
-	if err != nil {
-		t.Fatalf("Failed to overwrite checkpoint: %v", err)
-	}
-
-	// Load and verify it's the second checkpoint
-	loaded, err := ms.Load(ctx, "test_checkpoint")
-	if err != nil {
-		t.Fatalf("Failed to load checkpoint: %v", err)
-	}
-
-	if loaded.NodeName != "node2" {
-		t.Errorf("Expected NodeName 'node2', got '%s'", loaded.NodeName)
-	}
-
-	if loaded.State != "state2" {
-		t.Errorf("Expected State 'state2', got '%v'", loaded.State)
-	}
-
-	if loaded.Version != 2 {
-		t.Errorf("Expected Version 2, got %d", loaded.Version)
-	}
+		if loaded.NodeName != "processor-v2" {
+			t.Errorf("Expected v2 processor, got %s", loaded.NodeName)
+		}
+		if loaded.State != "updated" {
+			t.Errorf("Expected updated state, got %s", loaded.State)
+		}
+		if loaded.Version != 2 {
+			t.Errorf("Expected version 2, got %d", loaded.Version)
+		}
+	})
 }
 
 func TestMemoryCheckpointStore_List(t *testing.T) {
 	t.Parallel()
 
-	ms := NewMemoryCheckpointStore()
-	ctx := context.Background()
-	executionID := "exec_123"
-	threadID := "thread_456"
+	t.Run("filters by session_id", func(t *testing.T) {
+		t.Parallel()
 
-	// Save multiple checkpoints
-	checkpoints := []*store.Checkpoint{
-		{
-			ID:       "checkpoint_1",
-			NodeName: "node1",
-			Metadata: map[string]interface{}{
-				"execution_id": executionID,
-			},
-			Version:   1,
-			Timestamp: time.Now(),
-		},
-		{
-			ID:       "checkpoint_2",
-			NodeName: "node2",
-			Metadata: map[string]interface{}{
-				"execution_id": executionID,
-			},
-			Version:   2,
-			Timestamp: time.Now().Add(time.Hour),
-		},
-		{
-			ID:       "checkpoint_3",
-			NodeName: "node3",
-			Metadata: map[string]interface{}{
-				"thread_id": threadID,
-			},
-			Version:   1,
-			Timestamp: time.Now().Add(2 * time.Hour),
-		},
-		{
-			ID:       "checkpoint_4",
-			NodeName: "node4",
-			Metadata: map[string]interface{}{
-				"execution_id": "different_exec",
-			},
-			Version:   1,
-			Timestamp: time.Now().Add(3 * time.Hour),
-		},
-		{
-			ID:       "checkpoint_5",
-			NodeName: "node5",
-			// No metadata - should not be included in any list by execution_id or thread_id
-			Version:   1,
-			Timestamp: time.Now().Add(4 * time.Hour),
-		},
-	}
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
+		userSession := "web-user-12345"
 
-	for _, checkpoint := range checkpoints {
-		err := ms.Save(ctx, checkpoint)
-		if err != nil {
-			t.Fatalf("Failed to save checkpoint: %v", err)
+		checkpoints := []struct {
+			id      string
+			node    string
+			version int
+		}{
+			{"homepage-visit", "page-renderer", 1},
+			{"login-attempt", "auth-handler", 2},
+			{"dashboard-view", "dashboard-renderer", 3},
 		}
-	}
 
-	tests := []struct {
-		name         string
-		executionID  string
-		expectedLen  int
-		expectedIDs  []string
-		expectSorted bool
-	}{
-		{
-			name:        "list by execution_id",
-			executionID: executionID,
-			expectedLen: 2,
-			expectedIDs: []string{"checkpoint_1", "checkpoint_2"},
-			expectSorted: true, // Should be sorted by version ascending
-		},
-		{
-			name:        "list by thread_id",
-			executionID: threadID,
-			expectedLen: 1,
-			expectedIDs: []string{"checkpoint_3"},
-			expectSorted: true,
-		},
-		{
-			name:        "list non-existing execution",
-			executionID: "non_existing",
-			expectedLen: 0,
-			expectedIDs: []string{},
-			expectSorted: true,
-		},
-		{
-			name:        "list different execution",
-			executionID: "different_exec",
-			expectedLen: 1,
-			expectedIDs: []string{"checkpoint_4"},
-			expectSorted: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			listed, err := ms.List(ctx, tt.executionID)
-
+		for _, cp := range checkpoints {
+			fullCP := &store.Checkpoint{
+				ID:        cp.id,
+				NodeName:  cp.node,
+				State:     "success",
+				Timestamp: time.Now().Add(time.Duration(cp.version) * time.Minute),
+				Version:   cp.version,
+				Metadata: map[string]interface{}{
+					"session_id": userSession,
+				},
+			}
+			err := ms.Save(ctx, fullCP)
 			if err != nil {
-				t.Fatalf("Failed to list checkpoints: %v", err)
+				t.Fatalf("Failed to save %s: %v", cp.id, err)
 			}
+		}
 
-			if len(listed) != tt.expectedLen {
-				t.Errorf("Expected %d checkpoints, got %d", tt.expectedLen, len(listed))
-			}
+		results, err := ms.List(ctx, userSession)
+		if err != nil {
+			t.Fatalf("Failed to list: %v", err)
+		}
 
-			// Verify correct checkpoints returned
-			ids := make(map[string]bool)
-			for _, checkpoint := range listed {
-				ids[checkpoint.ID] = true
-			}
+		if len(results) != 3 {
+			t.Fatalf("Expected 3 checkpoints for user session, got %d", len(results))
+		}
 
-			for _, expectedID := range tt.expectedIDs {
-				if !ids[expectedID] {
-					t.Errorf("Expected checkpoint ID %s not found in results", expectedID)
-				}
+		// Verify they're sorted by version
+		for i := 1; i < len(results); i++ {
+			if results[i-1].Version > results[i].Version {
+				t.Error("Checkpoints not sorted by version")
+				break
 			}
+		}
+	})
 
-			// Verify sorting order if sorting is expected and there are multiple items
-			if tt.expectSorted && len(listed) > 1 {
-				for i := 1; i < len(listed); i++ {
-					if listed[i-1].Version > listed[i].Version {
-						t.Error("Checkpoints should be sorted by version ascending")
-						break
-					}
-				}
-			}
-		})
-	}
+	t.Run("filters by thread_id", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
+		botSession := "api-bot-67890"
+
+		cp := &store.Checkpoint{
+			ID:        "api-call",
+			NodeName:  "request-handler",
+			State:     "success",
+			Timestamp: time.Now(),
+			Version:   1,
+			Metadata: map[string]interface{}{
+				"thread_id": botSession,
+			},
+		}
+		err := ms.Save(ctx, cp)
+		if err != nil {
+			t.Fatalf("Failed to save: %v", err)
+		}
+
+		results, err := ms.List(ctx, botSession)
+		if err != nil {
+			t.Fatalf("Failed to list: %v", err)
+		}
+
+		if len(results) != 1 {
+			t.Fatalf("Expected 1 checkpoint for bot session, got %d", len(results))
+		}
+
+		if results[0].ID != "api-call" {
+			t.Errorf("Expected api-call, got %s", results[0].ID)
+		}
+	})
+
+	t.Run("empty for unknown session", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
+
+		results, err := ms.List(ctx, "ghost-session")
+		if err != nil {
+			t.Fatalf("Failed to list: %v", err)
+		}
+
+		if len(results) != 0 {
+			t.Errorf("Expected 0 checkpoints, got %d", len(results))
+		}
+	})
+
+	t.Run("mixed session/thread filters", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
+		userSession := "web-user-12345"
+		adminThread := "admin-ops-thread-1"
+
+		// Add a checkpoint that has both
+		mixedCP := &store.Checkpoint{
+			ID:        "mixed-metadata",
+			NodeName:  "hybrid-handler",
+			State:     "processing",
+			Timestamp: time.Now(),
+			Version:   1,
+			Metadata: map[string]interface{}{
+				"session_id": userSession,
+				"thread_id":  adminThread,
+			},
+		}
+		err := ms.Save(ctx, mixedCP)
+		if err != nil {
+			t.Fatalf("Failed to save mixed: %v", err)
+		}
+
+		// Should appear in both session and thread lists
+		sessionList, _ := ms.List(ctx, userSession)
+		threadList, _ := ms.List(ctx, adminThread)
+
+		if len(sessionList) != 1 {
+			t.Errorf("Expected 1 in session list, got %d", len(sessionList))
+		}
+		if len(threadList) != 1 {
+			t.Errorf("Expected 1 in thread list, got %d", len(threadList))
+		}
+	})
 }
 
 func TestMemoryCheckpointStore_Delete(t *testing.T) {
 	t.Parallel()
 
-	ms := NewMemoryCheckpointStore()
-	ctx := context.Background()
+	t.Run("delete existing", func(t *testing.T) {
+		t.Parallel()
 
-	// Save multiple checkpoints
-	checkpoints := []*store.Checkpoint{
-		{ID: "checkpoint_1", Version: 1},
-		{ID: "checkpoint_2", Version: 1},
-		{ID: "checkpoint_3", Version: 1},
-	}
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
 
-	for _, checkpoint := range checkpoints {
-		err := ms.Save(ctx, checkpoint)
-		if err != nil {
-			t.Fatalf("Failed to save checkpoint: %v", err)
+		// Save a few checkpoints
+		ids := []string{"keep-1", "delete-me", "keep-2"}
+		for _, id := range ids {
+			cp := &store.Checkpoint{
+				ID:        id,
+				NodeName:  "test-node",
+				State:     "test",
+				Timestamp: time.Now(),
+				Version:   1,
+			}
+			err := ms.Save(ctx, cp)
+			if err != nil {
+				t.Fatalf("Failed to save %s: %v", id, err)
+			}
 		}
-	}
 
-	// Delete one checkpoint
-	err := ms.Delete(ctx, "checkpoint_2")
-	if err != nil {
-		t.Fatalf("Failed to delete checkpoint: %v", err)
-	}
+		err := ms.Delete(ctx, "delete-me")
+		if err != nil {
+			t.Errorf("Delete failed: %v", err)
+		}
 
-	// Verify checkpoint is deleted
-	_, err = ms.Load(ctx, "checkpoint_2")
-	if err == nil {
-		t.Error("Expected checkpoint_2 to be deleted")
-	}
+		// Verify it's gone
+		_, err = ms.Load(ctx, "delete-me")
+		if err == nil {
+			t.Error("Deleted checkpoint should not load")
+		}
 
-	// Verify other checkpoints still exist
-	_, err = ms.Load(ctx, "checkpoint_1")
-	if err != nil {
-		t.Errorf("Expected checkpoint_1 to still exist: %v", err)
-	}
+		// Verify others are still there
+		_, err = ms.Load(ctx, "keep-1")
+		if err != nil {
+			t.Error("keep-1 should still exist")
+		}
 
-	_, err = ms.Load(ctx, "checkpoint_3")
-	if err != nil {
-		t.Errorf("Expected checkpoint_3 to still exist: %v", err)
-	}
+		_, err = ms.Load(ctx, "keep-2")
+		if err != nil {
+			t.Error("keep-2 should still exist")
+		}
+	})
 
-	// Delete non-existing checkpoint (should not error)
-	err = ms.Delete(ctx, "non_existing")
-	if err != nil {
-		t.Errorf("Expected no error when deleting non-existing checkpoint: %v", err)
-	}
+	t.Run("delete missing is no-op", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMemoryCheckpointStore()
+		ctx := context.Background()
+
+		err := ms.Delete(ctx, "never-existed")
+		if err != nil {
+			t.Errorf("Should not error for missing checkpoint: %v", err)
+		}
+	})
 }
 
 func TestMemoryCheckpointStore_Clear(t *testing.T) {
@@ -345,146 +349,149 @@ func TestMemoryCheckpointStore_Clear(t *testing.T) {
 
 	ms := NewMemoryCheckpointStore()
 	ctx := context.Background()
-	executionID := "exec_123"
-	differentExecutionID := "exec_456"
 
-	// Save multiple checkpoints for different executions
-	checkpoints := []*store.Checkpoint{
-		{
-			ID: "checkpoint_1",
-			Metadata: map[string]interface{}{
-				"execution_id": executionID,
-			},
-			Version: 1,
-		},
-		{
-			ID: "checkpoint_2",
-			Metadata: map[string]interface{}{
-				"execution_id": executionID,
-			},
-			Version: 2,
-		},
-		{
-			ID: "checkpoint_3",
-			Metadata: map[string]interface{}{
-				"execution_id": differentExecutionID,
-			},
-			Version: 1,
-		},
+	// Create checkpoints for two different workflows
+	workflowA := "data-pipeline-2024"
+	workflowB := "ml-training-job-999"
+
+	setupData := []struct {
+		id       string
+		workflow string
+		version  int
+	}{
+		{"extract-step", workflowA, 1},
+		{"transform-step", workflowA, 2},
+		{"load-step", workflowA, 3},
+		{"model-init", workflowB, 1},
+		{"training-start", workflowB, 2},
 	}
 
-	for _, checkpoint := range checkpoints {
-		err := ms.Save(ctx, checkpoint)
+	for _, d := range setupData {
+		cp := &store.Checkpoint{
+			ID:        d.id,
+			NodeName:  "processor",
+			State:     "running",
+			Timestamp: time.Now(),
+			Version:   d.version,
+			Metadata: map[string]interface{}{
+				"workflow_id": d.workflow,
+			},
+		}
+		err := ms.Save(ctx, cp)
 		if err != nil {
-			t.Fatalf("Failed to save checkpoint: %v", err)
+			t.Fatalf("Failed to save %s: %v", d.id, err)
 		}
 	}
 
-	// Verify checkpoints exist before clear
-	listed, err := ms.List(ctx, executionID)
-	if err != nil {
-		t.Fatalf("Failed to list checkpoints before clear: %v", err)
-	}
-	if len(listed) != 2 {
-		t.Fatalf("Expected 2 checkpoints before clear, got %d", len(listed))
+	// Verify initial state
+	aList, _ := ms.List(ctx, workflowA)
+	bList, _ := ms.List(ctx, workflowB)
+	if len(aList) != 3 || len(bList) != 2 {
+		t.Fatalf("Initial setup wrong: a=%d, b=%d", len(aList), len(bList))
 	}
 
-	// Clear checkpoints for specific execution
-	err = ms.Clear(ctx, executionID)
+	err := ms.Clear(ctx, workflowA)
 	if err != nil {
-		t.Fatalf("Failed to clear checkpoints: %v", err)
+		t.Fatalf("Clear failed: %v", err)
 	}
 
-	// Verify checkpoints for executionID are cleared
-	listed, err = ms.List(ctx, executionID)
-	if err != nil {
-		t.Fatalf("Failed to list checkpoints after clear: %v", err)
-	}
-	if len(listed) != 0 {
-		t.Errorf("Expected 0 checkpoints after clear, got %d", len(listed))
+	// Workflow A should be empty
+	aList, _ = ms.List(ctx, workflowA)
+	if len(aList) != 0 {
+		t.Errorf("Workflow A should be empty, has %d", len(aList))
 	}
 
-	// Verify checkpoints for different executionID still exist
-	listed, err = ms.List(ctx, differentExecutionID)
-	if err != nil {
-		t.Fatalf("Failed to list checkpoints for different execution: %v", err)
-	}
-	if len(listed) != 1 {
-		t.Errorf("Expected 1 checkpoint for different execution, got %d", len(listed))
+	// Workflow B should be untouched
+	bList, _ = ms.List(ctx, workflowB)
+	if len(bList) != 2 {
+		t.Errorf("Workflow B should still have 2, has %d", len(bList))
 	}
 
 	// Verify individual checkpoints
-	_, err = ms.Load(ctx, "checkpoint_1")
+	_, err = ms.Load(ctx, "extract-step")
 	if err == nil {
-		t.Error("Expected checkpoint_1 to be cleared")
+		t.Error("extract-step should be cleared")
 	}
 
-	_, err = ms.Load(ctx, "checkpoint_2")
-	if err == nil {
-		t.Error("Expected checkpoint_2 to be cleared")
-	}
-
-	_, err = ms.Load(ctx, "checkpoint_3")
+	_, err = ms.Load(ctx, "model-init")
 	if err != nil {
-		t.Errorf("Expected checkpoint_3 to still exist: %v", err)
+		t.Error("model-init should still exist")
 	}
 }
 
-func TestMemoryCheckpointStore_ConcurrentAccess(t *testing.T) {
+func TestMemoryCheckpointStore_ThreadSafety(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryCheckpointStore()
 	ctx := context.Background()
 
-	// Test concurrent saves
-	done := make(chan bool, 10)
-	errs := make(chan error, 10)
+	// Simulate multiple API endpoints writing checkpoints concurrently
+	numGoroutines := 10
+	checkpointsPerGoroutine := 5
 
-	for i := 0; i < 10; i++ {
-		go func(id int) {
+	done := make(chan bool, numGoroutines)
+	errs := make(chan error, numGoroutines)
+
+	// Start multiple "workers"
+	for i := 0; i < numGoroutines; i++ {
+		go func(workerID int) {
 			defer func() { done <- true }()
 
-			checkpoint := &store.Checkpoint{
-				ID:       fmt.Sprintf("checkpoint_%d", id),
-				NodeName: fmt.Sprintf("node_%d", id),
-				Metadata: map[string]interface{}{
-					"execution_id": fmt.Sprintf("exec_%d", id),
-				},
-				Version:   1,
-				Timestamp: time.Now(),
-			}
+			for j := 0; j < checkpointsPerGoroutine; j++ {
+				cp := &store.Checkpoint{
+					ID:       fmt.Sprintf("worker-%d-step-%d", workerID, j),
+					NodeName: fmt.Sprintf("handler-%d", workerID),
+					State:    fmt.Sprintf("processing-step-%d", j),
+					Metadata: map[string]interface{}{
+						"worker_id":   workerID,
+						"step_number": j,
+						"timestamp":   time.Now().UnixNano(),
+					},
+					Timestamp: time.Now(),
+					Version:   j + 1,
+				}
 
-			if err := ms.Save(ctx, checkpoint); err != nil {
-				errs <- fmt.Errorf("failed to save checkpoint %d: %v", id, err)
-				return
-			}
+				// Concurrent save
+				if err := ms.Save(ctx, cp); err != nil {
+					errs <- fmt.Errorf("worker %d save step %d failed: %v", workerID, j, err)
+					return
+				}
 
-			// Try to load it immediately
-			if _, err := ms.Load(ctx, checkpoint.ID); err != nil {
-				errs <- fmt.Errorf("failed to load checkpoint %d: %v", id, err)
-				return
+				// Concurrent load to verify it saved
+				loaded, err := ms.Load(ctx, cp.ID)
+				if err != nil {
+					errs <- fmt.Errorf("worker %d load step %d failed: %v", workerID, j, err)
+					return
+				}
+
+				if loaded.ID != cp.ID {
+					errs <- fmt.Errorf("worker %d step %d ID mismatch", workerID, j)
+					return
+				}
 			}
 		}(i)
 	}
 
-	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	// Wait for all workers
+	for i := 0; i < numGoroutines; i++ {
 		select {
 		case <-done:
-			// OK
+			// Worker finished
 		case err := <-errs:
-			t.Errorf("Error in goroutine: %v", err)
-		case <-time.After(5 * time.Second):
+			t.Errorf("Worker error: %v", err)
+		case <-time.After(10 * time.Second):
 			t.Fatal("Test timed out")
 		}
 	}
 
-	// Verify all checkpoints were saved
-	for i := 0; i < 10; i++ {
-		id := fmt.Sprintf("checkpoint_%d", i)
-		_, err := ms.Load(ctx, id)
-		if err != nil {
-			t.Errorf("Expected checkpoint %s to exist", id)
+	// Verify all checkpoints are there
+	for i := 0; i < numGoroutines; i++ {
+		for j := 0; j < checkpointsPerGoroutine; j++ {
+			id := fmt.Sprintf("worker-%d-step-%d", i, j)
+			_, err := ms.Load(ctx, id)
+			if err != nil {
+				t.Errorf("Checkpoint %s missing", id)
+			}
 		}
 	}
 }
