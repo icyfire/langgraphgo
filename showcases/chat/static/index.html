@@ -42,7 +42,7 @@
         }
 
         // Load marked.js immediately (lightweight and essential)
-        loadLibrary('marked', 'https://cdn.bootcdn.net/ajax/libs/marked/16.3.0/lib/marked.esm.min.js');
+        loadLibrary('marked', 'https://cdn.bootcdn.net/ajax/libs/marked/16.3.0/lib/marked.umd.min.js');
 
         // Load highlight.js immediately (relatively small)
         loadLibrary('highlightjs', 'https://cdn.bootcdn.net/ajax/libs/highlight.js/11.11.1/es/highlight.min.js');
@@ -1081,7 +1081,7 @@
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    const chunk = decoder.decode(value);
+                    const chunk = decoder.decode(value, { stream: true });
                     const lines = chunk.split('\n');
 
                     for (const line of lines) {
@@ -1299,9 +1299,10 @@
             const hasHeaders = /^#+\s/m.test(text);
             const hasLists = /^[\-\*\+]\s/m.test(text) || /^\d+\.\s/m.test(text);
             const hasLinks = /\[.*?\]\(.*?\)/.test(text);
+            const hasDetails = text.includes('<details');
 
             // If we don't have markdown features, just keep as plain text
-            if (!hasCodeBlock && !hasHeaders && !hasLists && !hasLinks) {
+            if (!hasCodeBlock && !hasHeaders && !hasLists && !hasLinks && !hasDetails) {
                 return;
             }
 
@@ -1433,61 +1434,61 @@
             }
         }
 
-                async function addMessageToUI(role, content, timestamp, messageId = null, feedback = null) {
-                    // Ensure marked is loaded
-                    try {
-                        if (window.librariesLoading['marked']) {
-                            await window.librariesLoading['marked'];
-                        }
-                    } catch (e) {
-                        console.warn('Marked library failed to load:', e);
-                    }
-        
-                    const messagesDiv = document.getElementById('messages');
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = `message ${role}`;
-        
-                    // Create Avatar
-                    const avatarDiv = document.createElement('div');
-                    avatarDiv.className = 'avatar';
-                    if (role === 'assistant') {
-                        avatarDiv.innerHTML = '<img src="/static/images/robot.png" alt="AI">';
-                    } else {
-                        avatarDiv.innerHTML = '<span>You</span>';
-                    }
-        
-                    const time = new Date(timestamp).toLocaleTimeString();
-                    let processedContent = '';
-                    let extractedArtifacts = [];
-        
-                    if (role === 'assistant') {
-                        // First extract artifacts from content
-                        const result = extractArtifacts(content);
-                        extractedArtifacts = result.artifacts;
-        
-                        console.log('Extracted artifacts:', extractedArtifacts); // Debug log
-                        console.log('Current session ID:', currentSessionId); // Debug log
-        
-                        // Store artifacts
-                        extractedArtifacts.forEach(artifact => {
-                            artifacts.set(artifact.id, artifact);
-                        });
-        
-                        console.log('All artifacts after adding:', Array.from(artifacts.entries())); // Debug log
-        
-                        // Parse Markdown (this will convert code blocks to HTML)
-                        if (typeof marked !== 'undefined') {
-                            processedContent = marked.parse(result.content);
-                        } else {
-                            processedContent = escapeHtml(result.content);
-                        }
-        
-                        // Find and replace artifact markers in the parsed HTML
-                        const markerRegex = /<!-- ARTIFACT:(.*?) -->/g;
-                            processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
-                                const artifact = artifacts.get(artifactId);
-                                if (artifact) {
-                                    return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
+        async function addMessageToUI(role, content, timestamp, messageId = null, feedback = null) {
+            // Ensure marked is loaded
+            try {
+                if (window.librariesLoading['marked']) {
+                    await window.librariesLoading['marked'];
+                }
+            } catch (e) {
+                console.warn('Marked library failed to load:', e);
+            }
+
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            // Create Avatar
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'avatar';
+            if (role === 'assistant') {
+                avatarDiv.innerHTML = '<img src="/static/images/robot.png" alt="AI">';
+            } else {
+                avatarDiv.innerHTML = '<span>You</span>';
+            }
+
+            const time = new Date(timestamp).toLocaleTimeString();
+            let processedContent = '';
+            let extractedArtifacts = [];
+
+            if (role === 'assistant') {
+                // First extract artifacts from content
+                const result = extractArtifacts(content);
+                extractedArtifacts = result.artifacts;
+
+                console.log('Extracted artifacts:', extractedArtifacts); // Debug log
+                console.log('Current session ID:', currentSessionId); // Debug log
+
+                // Store artifacts
+                extractedArtifacts.forEach(artifact => {
+                    artifacts.set(artifact.id, artifact);
+                });
+
+                console.log('All artifacts after adding:', Array.from(artifacts.entries())); // Debug log
+
+                // Parse Markdown (this will convert code blocks to HTML)
+                if (typeof marked !== 'undefined') {
+                    processedContent = marked.parse(result.content);
+                } else {
+                    processedContent = escapeHtml(result.content);
+                }
+
+                // Find and replace artifact markers in the parsed HTML
+                const markerRegex = /<!-- ARTIFACT:(.*?) -->/g;
+                processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
+                    const artifact = artifacts.get(artifactId);
+                    if (artifact) {
+                        return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
                                     <span class="artifact-placeholder-icon">${getTypeIcon(artifact.type)}</span>
                                     <div class="artifact-placeholder-text">
                                         <div class="artifact-placeholder-label">Artifact</div>
@@ -1495,18 +1496,18 @@
                                     </div>
                                     <span class="artifact-placeholder-arrow">→</span>
                                 </div>`;
-                                }
-                                return match;
-                            });
-        
-                        // Update artifacts display
-                        if (isArtifactsOpen) {
-                            updateArtifactsDisplay();
-                        }
-                    } else {
-                        // Escape HTML for user messages
-                        processedContent = escapeHtml(content);
                     }
+                    return match;
+                });
+
+                // Update artifacts display
+                if (isArtifactsOpen) {
+                    updateArtifactsDisplay();
+                }
+            } else {
+                // Escape HTML for user messages
+                processedContent = escapeHtml(content);
+            }
             const messageContentDiv = document.createElement('div');
             messageContentDiv.className = 'message-content';
 

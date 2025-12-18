@@ -488,7 +488,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 
 						// Notify start of tool execution
 						toolName = (*tool).Name()
-						notifyStart := fmt.Sprintf("\n> 🛠️ Calling tool **%s**...\n", toolName)
+						notifyStart := fmt.Sprintf("\n\n> 🛠️ Calling tool **%s**...\n\n", toolName)
 						onChunk(ctx, []byte(notifyStart))
 
 						// Call the tool
@@ -497,7 +497,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 						// Notify end of tool execution
 						if err != nil {
 							log.Printf("Tool %s call failed: %v", toolName, err)
-							notifyError := fmt.Sprintf("\n> ❌ Tool error: %v\n", err)
+							notifyError := fmt.Sprintf("\n\n> ❌ Tool error: %v\n\n", err)
 							onChunk(ctx, []byte(notifyError))
 						} else {
 							toolUsed = true
@@ -505,7 +505,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 							log.Printf("Successfully used tool '%s' from skill '%s'", toolName, selectedSkill)
 
 							// Format result in collapsible details
-							notifyResult := fmt.Sprintf("\n<details><summary>Tool Result: %s</summary>\n\n```json\n%s\n```\n\n</details>\n\n", toolName, result)
+							notifyResult := fmt.Sprintf("\n\n<details>\n<summary>Tool Result: %s</summary>\n\n```\n%s\n```\n\n</details>\n\n", toolName, result)
 							onChunk(ctx, []byte(notifyResult))
 						}
 					}
@@ -528,7 +528,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 
 				// Notify start of tool execution
 				toolName = (*tool).Name()
-				notifyStart := fmt.Sprintf("\n> 🛠️ Calling tool **%s**...\n", toolName)
+				notifyStart := fmt.Sprintf("\n\n> 🛠️ Calling tool **%s**...\n\n", toolName)
 				onChunk(ctx, []byte(notifyStart))
 
 				// Call the tool
@@ -537,7 +537,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 				// Notify end of tool execution
 				if err != nil {
 					log.Printf("MCP tool %s call failed: %v", toolName, err)
-					notifyError := fmt.Sprintf("\n> ❌ Tool error: %v\n", err)
+					notifyError := fmt.Sprintf("\n\n> ❌ Tool error: %v\n\n", err)
 					onChunk(ctx, []byte(notifyError))
 				} else {
 					toolUsed = true
@@ -545,7 +545,7 @@ func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enable
 					log.Printf("Successfully used MCP tool '%s'", toolName)
 
 					// Format result in collapsible details
-					notifyResult := fmt.Sprintf("\n<details><summary>Tool Result: %s</summary>\n\n```json\n%s\n```\n\n</details>\n\n", toolName, result)
+					notifyResult := fmt.Sprintf("\n\n<details>\n<summary>Tool Result: %s</summary>\n\n```\n%s\n```\n\n</details>\n\n", toolName, result)
 					onChunk(ctx, []byte(notifyResult))
 				}
 			}
