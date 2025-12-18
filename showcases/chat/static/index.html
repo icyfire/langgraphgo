@@ -5,8 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="page-title">LangGraphGo 聊天</title>
+    <link rel="icon" href="/static/images/favicon.ico" type="image/x-icon">
     <!-- Load only essential CSS immediately -->
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/highlight.js/11.11.1/styles/default.min.css">
 
     <!-- Lazy load heavy libraries only when needed -->
     <script>
@@ -41,13 +42,13 @@
         }
 
         // Load marked.js immediately (lightweight and essential)
-        loadLibrary('marked', 'https://cdn.bootcdn.net/ajax/libs/marked/11.1.1/marked.min.js');
+        loadLibrary('marked', 'https://cdn.bootcdn.net/ajax/libs/marked/16.3.0/lib/marked.esm.min.js');
 
         // Load highlight.js immediately (relatively small)
-        loadLibrary('highlightjs', 'https://cdn.bootcdn.net/ajax/libs/highlight.js/11.9.0/highlight.min.js');
+        loadLibrary('highlightjs', 'https://cdn.bootcdn.net/ajax/libs/highlight.js/11.11.1/es/highlight.min.js');
 
         // Lazy load Mermaid (3.3MB, only when needed)
-        window.loadMermaid = function() {
+        window.loadMermaid = function () {
             return loadLibrary('mermaid', 'https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js', () => {
                 if (typeof mermaid !== 'undefined') {
                     mermaid.initialize({
@@ -71,7 +72,7 @@
         };
 
         // Lazy load MathJax (only when needed)
-        window.loadMathJax = function() {
+        window.loadMathJax = function () {
             if (!window.MathJax) {
                 window.MathJax = {
                     tex: {
@@ -111,7 +112,8 @@
                 <div class="theme-selector-sidebar" id="theme-selector" onclick="showThemeModal()" title="主题设置">
                     <span class="theme-icon">🎨</span>
                 </div>
-                <div class="code-theme-selector-sidebar" id="code-theme-selector" onclick="showCodeThemeModal()" title="代码主题">
+                <div class="code-theme-selector-sidebar" id="code-theme-selector" onclick="showCodeThemeModal()"
+                    title="代码主题">
                     <span class="code-theme-icon">💻</span>
                 </div>
                 <div class="settings-btn" id="settings-btn" onclick="toggleSettingsMenu()" title="设置">
@@ -207,37 +209,45 @@
                     <h3>☀️ 浅色主题</h3>
                     <div class="theme-grid">
                         <div class="code-theme-option" onclick="setCodeTheme('default')" data-code-theme="default">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
                                 <span style="color: #0066cc;">function</span>
                             </div>
                             <span>默认</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('github')" data-code-theme="github">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);">
                                 <span style="color: #005cc5;">function</span>
                             </div>
                             <span>GitHub</span>
                         </div>
-                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-light')" data-code-theme="atom-one-light">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);">
+                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-light')"
+                            data-code-theme="atom-one-light">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);">
                                 <span style="color: #a626a4;">function</span>
                             </div>
                             <span>Atom One Light</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('xcode')" data-code-theme="xcode">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%);">
                                 <span style="color: #aa0d91;">function</span>
                             </div>
                             <span>Xcode</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('vs')" data-code-theme="vs">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);">
                                 <span style="color: #0000ff;">function</span>
                             </div>
                             <span>Visual Studio</span>
                         </div>
-                        <div class="code-theme-option" onclick="setCodeTheme('stackoverflow-light')" data-code-theme="stackoverflow-light">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #ffffff 0%, #f6f6f6 100%);">
+                        <div class="code-theme-option" onclick="setCodeTheme('stackoverflow-light')"
+                            data-code-theme="stackoverflow-light">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #ffffff 0%, #f6f6f6 100%);">
                                 <span style="color: #0077cc;">function</span>
                             </div>
                             <span>Stack Overflow</span>
@@ -248,49 +258,60 @@
                     <h3>🌙 深色主题</h3>
                     <div class="theme-grid">
                         <div class="code-theme-option" onclick="setCodeTheme('monokai')" data-code-theme="monokai">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #272822 0%, #1e1f1c 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #272822 0%, #1e1f1c 100%);">
                                 <span style="color: #66d9ef;">function</span>
                             </div>
                             <span>Monokai</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('dracula')" data-code-theme="dracula">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #282a36 0%, #1e1f29 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #282a36 0%, #1e1f29 100%);">
                                 <span style="color: #8be9fd;">function</span>
                             </div>
                             <span>Dracula</span>
                         </div>
-                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-dark')" data-code-theme="atom-one-dark">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #282c34 0%, #21252b 100%);">
+                        <div class="code-theme-option" onclick="setCodeTheme('atom-one-dark')"
+                            data-code-theme="atom-one-dark">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #282c34 0%, #21252b 100%);">
                                 <span style="color: #c678dd;">function</span>
                             </div>
                             <span>Atom One Dark</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('vs2015')" data-code-theme="vs2015">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);">
                                 <span style="color: #569cd6;">function</span>
                             </div>
                             <span>VS 2015</span>
                         </div>
-                        <div class="code-theme-option" onclick="setCodeTheme('github-dark')" data-code-theme="github-dark">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);">
+                        <div class="code-theme-option" onclick="setCodeTheme('github-dark')"
+                            data-code-theme="github-dark">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);">
                                 <span style="color: #79c0ff;">function</span>
                             </div>
                             <span>GitHub Dark</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('nord')" data-code-theme="nord">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #2e3440 0%, #3b4252 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #2e3440 0%, #3b4252 100%);">
                                 <span style="color: #88c0d0;">function</span>
                             </div>
                             <span>Nord</span>
                         </div>
-                        <div class="code-theme-option" onclick="setCodeTheme('tokyo-night-dark')" data-code-theme="tokyo-night-dark">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #1a1b26 0%, #16161e 100%);">
+                        <div class="code-theme-option" onclick="setCodeTheme('tokyo-night-dark')"
+                            data-code-theme="tokyo-night-dark">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #1a1b26 0%, #16161e 100%);">
                                 <span style="color: #7aa2f7;">function</span>
                             </div>
                             <span>Tokyo Night</span>
                         </div>
                         <div class="code-theme-option" onclick="setCodeTheme('night-owl')" data-code-theme="night-owl">
-                            <div class="code-theme-preview" style="background: linear-gradient(135deg, #011627 0%, #001424 100%);">
+                            <div class="code-theme-preview"
+                                style="background: linear-gradient(135deg, #011627 0%, #001424 100%);">
                                 <span style="color: #c792ea;">function</span>
                             </div>
                             <span>Night Owl</span>
@@ -651,7 +672,7 @@
         }
 
         // Close settings menu when clicking outside
-        document.addEventListener('click', function(event) {
+        document.addEventListener('click', function (event) {
             const settingsBtn = document.getElementById('settings-btn');
             const settingsMenu = document.getElementById('settings-menu');
 
@@ -1135,10 +1156,10 @@
 
                                         // Find and replace artifact markers
                                         const markerRegex = /<!-- ARTIFACT:(.*?) -->/g;
-                                        processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
-                                            const artifact = artifacts.get(artifactId);
-                                            if (artifact) {
-                                                return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
+                                            processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
+                                                const artifact = artifacts.get(artifactId);
+                                                if (artifact) {
+                                                    return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
                                                     <span class="artifact-placeholder-icon">${getTypeIcon(artifact.type)}</span>
                                                     <div class="artifact-placeholder-text">
                                                         <div class="artifact-placeholder-label">Artifact</div>
@@ -1146,9 +1167,9 @@
                                                     </div>
                                                     <span class="artifact-placeholder-arrow">→</span>
                                                 </div>`;
-                                            }
-                                            return match;
-                                        });
+                                                }
+                                                return match;
+                                            });
 
                                         messageContentDiv.innerHTML = processedContent;
 
@@ -1173,19 +1194,19 @@
                                         if (chatConfig.enableFeedback && messageId) {
                                             const feedbackActions = document.createElement('div');
                                             feedbackActions.className = 'feedback-actions';
-                                            
+
                                             const likeBtn = document.createElement('button');
                                             likeBtn.className = 'feedback-btn';
                                             likeBtn.innerHTML = '👍';
                                             likeBtn.title = 'Like';
                                             likeBtn.onclick = () => sendFeedback(messageId, 'like', likeBtn);
-                                            
+
                                             const dislikeBtn = document.createElement('button');
                                             dislikeBtn.className = 'feedback-btn';
                                             dislikeBtn.innerHTML = '👎';
                                             dislikeBtn.title = 'Dislike';
                                             dislikeBtn.onclick = () => sendFeedback(messageId, 'dislike', dislikeBtn);
-                                            
+
                                             feedbackActions.appendChild(likeBtn);
                                             feedbackActions.appendChild(dislikeBtn);
                                             footer.appendChild(feedbackActions);
@@ -1341,7 +1362,7 @@
                 const isLike = feedback === 'like';
                 const isDislike = feedback === 'dislike';
                 const parent = btnElement.parentElement;
-                
+
                 // Reset UI in the same group
                 parent.querySelectorAll('.feedback-btn').forEach(btn => btn.classList.remove('active'));
 
@@ -1412,71 +1433,80 @@
             }
         }
 
-        async function addMessageToUI(role, content, timestamp, messageId = null, feedback = null) {
-            // Ensure marked is loaded
-            await window.librariesLoading['marked'];
-
-            const messagesDiv = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-
-            // Create Avatar
-            const avatarDiv = document.createElement('div');
-            avatarDiv.className = 'avatar';
-            if (role === 'assistant') {
-                avatarDiv.innerHTML = '<img src="/static/images/robot.png" alt="AI">';
-            } else {
-                avatarDiv.innerHTML = '<span>You</span>';
-            }
-
-            const time = new Date(timestamp).toLocaleTimeString();
-            let processedContent = '';
-            let extractedArtifacts = [];
-
-            if (role === 'assistant') {
-                // First extract artifacts from content
-                const result = extractArtifacts(content);
-                extractedArtifacts = result.artifacts;
-
-                console.log('Extracted artifacts:', extractedArtifacts); // Debug log
-                console.log('Current session ID:', currentSessionId); // Debug log
-
-                // Store artifacts
-                extractedArtifacts.forEach(artifact => {
-                    artifacts.set(artifact.id, artifact);
-                });
-
-                console.log('All artifacts after adding:', Array.from(artifacts.entries())); // Debug log
-
-                // Parse Markdown (this will convert code blocks to HTML)
-                processedContent = marked.parse(result.content);
-
-                // Find and replace artifact markers in the parsed HTML
-                const markerRegex = /<!-- ARTIFACT:(.*?) -->/g;
-                    processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
-                        const artifact = artifacts.get(artifactId);
-                        if (artifact) {
-                            return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
-                            <span class="artifact-placeholder-icon">${getTypeIcon(artifact.type)}</span>
-                            <div class="artifact-placeholder-text">
-                                <div class="artifact-placeholder-label">Artifact</div>
-                                <div class="artifact-placeholder-title">${artifact.title}</div>
-                            </div>
-                            <span class="artifact-placeholder-arrow">→</span>
-                        </div>`;
+                async function addMessageToUI(role, content, timestamp, messageId = null, feedback = null) {
+                    // Ensure marked is loaded
+                    try {
+                        if (window.librariesLoading['marked']) {
+                            await window.librariesLoading['marked'];
                         }
-                        return match;
-                    });
-
-                // Update artifacts display
-                if (isArtifactsOpen) {
-                    updateArtifactsDisplay();
-                }
-            } else {
-                // Escape HTML for user messages
-                processedContent = escapeHtml(content);
-            }
-
+                    } catch (e) {
+                        console.warn('Marked library failed to load:', e);
+                    }
+        
+                    const messagesDiv = document.getElementById('messages');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${role}`;
+        
+                    // Create Avatar
+                    const avatarDiv = document.createElement('div');
+                    avatarDiv.className = 'avatar';
+                    if (role === 'assistant') {
+                        avatarDiv.innerHTML = '<img src="/static/images/robot.png" alt="AI">';
+                    } else {
+                        avatarDiv.innerHTML = '<span>You</span>';
+                    }
+        
+                    const time = new Date(timestamp).toLocaleTimeString();
+                    let processedContent = '';
+                    let extractedArtifacts = [];
+        
+                    if (role === 'assistant') {
+                        // First extract artifacts from content
+                        const result = extractArtifacts(content);
+                        extractedArtifacts = result.artifacts;
+        
+                        console.log('Extracted artifacts:', extractedArtifacts); // Debug log
+                        console.log('Current session ID:', currentSessionId); // Debug log
+        
+                        // Store artifacts
+                        extractedArtifacts.forEach(artifact => {
+                            artifacts.set(artifact.id, artifact);
+                        });
+        
+                        console.log('All artifacts after adding:', Array.from(artifacts.entries())); // Debug log
+        
+                        // Parse Markdown (this will convert code blocks to HTML)
+                        if (typeof marked !== 'undefined') {
+                            processedContent = marked.parse(result.content);
+                        } else {
+                            processedContent = escapeHtml(result.content);
+                        }
+        
+                        // Find and replace artifact markers in the parsed HTML
+                        const markerRegex = /<!-- ARTIFACT:(.*?) -->/g;
+                            processedContent = processedContent.replace(markerRegex, (match, artifactId) => {
+                                const artifact = artifacts.get(artifactId);
+                                if (artifact) {
+                                    return `<div class="artifact-placeholder" data-artifact-id="${artifactId}">
+                                    <span class="artifact-placeholder-icon">${getTypeIcon(artifact.type)}</span>
+                                    <div class="artifact-placeholder-text">
+                                        <div class="artifact-placeholder-label">Artifact</div>
+                                        <div class="artifact-placeholder-title">${artifact.title}</div>
+                                    </div>
+                                    <span class="artifact-placeholder-arrow">→</span>
+                                </div>`;
+                                }
+                                return match;
+                            });
+        
+                        // Update artifacts display
+                        if (isArtifactsOpen) {
+                            updateArtifactsDisplay();
+                        }
+                    } else {
+                        // Escape HTML for user messages
+                        processedContent = escapeHtml(content);
+                    }
             const messageContentDiv = document.createElement('div');
             messageContentDiv.className = 'message-content';
 
@@ -1500,19 +1530,19 @@
                 if (chatConfig.enableFeedback && messageId) {
                     const feedbackActions = document.createElement('div');
                     feedbackActions.className = 'feedback-actions';
-                    
+
                     const likeBtn = document.createElement('button');
                     likeBtn.className = `feedback-btn ${feedback === 'like' ? 'active' : ''}`;
                     likeBtn.innerHTML = '👍';
                     likeBtn.title = 'Like';
                     likeBtn.onclick = () => sendFeedback(messageId, 'like', likeBtn);
-                    
+
                     const dislikeBtn = document.createElement('button');
                     dislikeBtn.className = `feedback-btn ${feedback === 'dislike' ? 'active' : ''}`;
                     dislikeBtn.innerHTML = '👎';
                     dislikeBtn.title = 'Dislike';
                     dislikeBtn.onclick = () => sendFeedback(messageId, 'dislike', dislikeBtn);
-                    
+
                     feedbackActions.appendChild(likeBtn);
                     feedbackActions.appendChild(dislikeBtn);
                     footer.appendChild(feedbackActions);
@@ -1535,7 +1565,7 @@
                 messageDiv.appendChild(messageContentDiv);
                 messageDiv.appendChild(avatarDiv);
             }
-            
+
             messagesDiv.appendChild(messageDiv);
 
             // Add click handler for artifact placeholders

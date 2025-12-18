@@ -66,6 +66,7 @@ type SkillInfo struct {
 // ChatAgent interface defines the contract for chat agents
 type ChatAgent interface {
 	Chat(ctx context.Context, message string, enableSkills bool, enableMCP bool) (string, error)
+	ChatStream(ctx context.Context, message string, enableSkills bool, enableMCP bool, onChunk func(context.Context, []byte) error) (string, error)
 }
 
 // SimpleChatAgent manages conversation history for a session
@@ -423,6 +424,147 @@ func (a *SimpleChatAgent) Chat(ctx context.Context, message string, enableSkills
 
 	// Call LLM with full history
 	response, err := a.llm.GenerateContent(ctx, a.messages)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	// Extract response text
+	var responseText string
+	if response != nil && len(response.Choices) > 0 {
+		responseText = response.Choices[0].Content
+	}
+
+	// Add assistant response to history
+	assistantMsg := llms.MessageContent{
+		Role:  llms.ChatMessageTypeAI,
+		Parts: []llms.ContentPart{llms.TextPart(responseText)},
+	}
+	a.messages = append(a.messages, assistantMsg)
+
+	return responseText, nil
+}
+
+// ChatStream sends a message and streams response
+func (a *SimpleChatAgent) ChatStream(ctx context.Context, message string, enableSkills bool, enableMCP bool, onChunk func(context.Context, []byte) error) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Add user message
+	userMsg := llms.MessageContent{
+		Role:  llms.ChatMessageTypeHuman,
+		Parts: []llms.ContentPart{llms.TextPart(message)},
+	}
+	a.messages = append(a.messages, userMsg)
+
+	toolUsed := false
+	var toolResult string
+	var toolName string
+
+	if a.toolsEnabled {
+		// Stage 1: Select skill if needed (only if user enables Skills)
+		if enableSkills && len(a.skills) > 0 {
+			selectedSkill, err := a.selectSkillForTask(ctx, message)
+			if err != nil {
+				log.Printf("Skill selection error: %v", err)
+			} else if selectedSkill != "" {
+				// Load tools for the selected skill
+				skillTools, err := a.loadSkillTools(selectedSkill)
+				if err != nil {
+					log.Printf("Failed to load skill tools: %v", err)
+				} else {
+					a.selectedSkill = selectedSkill
+
+					// Stage 2: Select specific tool from the skill
+					tool, args, err := a.selectToolForTask(ctx, message, skillTools)
+					if err != nil {
+						log.Printf("Tool selection error: %v", err)
+					} else if tool != nil {
+						// Convert args to JSON string
+						argsJSON, _ := json.MarshalIndent(args, "", "  ")
+						argsStr := string(argsJSON)
+						if argsStr == "null" {
+							argsStr = "{}"
+						}
+
+						// Notify start of tool execution
+						toolName = (*tool).Name()
+						notifyStart := fmt.Sprintf("\n> 🛠️ Calling tool **%s**...\n", toolName)
+						onChunk(ctx, []byte(notifyStart))
+
+						// Call the tool
+						result, err := (*tool).Call(ctx, argsStr)
+
+						// Notify end of tool execution
+						if err != nil {
+							log.Printf("Tool %s call failed: %v", toolName, err)
+							notifyError := fmt.Sprintf("\n> ❌ Tool error: %v\n", err)
+							onChunk(ctx, []byte(notifyError))
+						} else {
+							toolUsed = true
+							toolResult = result
+							log.Printf("Successfully used tool '%s' from skill '%s'", toolName, selectedSkill)
+
+							// Format result in collapsible details
+							notifyResult := fmt.Sprintf("\n<details><summary>Tool Result: %s</summary>\n\n```json\n%s\n```\n\n</details>\n\n", toolName, result)
+							onChunk(ctx, []byte(notifyResult))
+						}
+					}
+				}
+			}
+		}
+
+		// If no skill was selected, try MCP tools (only if user enables MCP)
+		if !toolUsed && enableMCP && len(a.mcpTools) > 0 {
+			tool, args, err := a.selectToolForTask(ctx, message, a.mcpTools)
+			if err != nil {
+				log.Printf("MCP tool selection error: %v", err)
+			} else if tool != nil {
+				// Convert args to JSON string
+				argsJSON, _ := json.MarshalIndent(args, "", "  ")
+				argsStr := string(argsJSON)
+				if argsStr == "null" {
+					argsStr = "{}"
+				}
+
+				// Notify start of tool execution
+				toolName = (*tool).Name()
+				notifyStart := fmt.Sprintf("\n> 🛠️ Calling tool **%s**...\n", toolName)
+				onChunk(ctx, []byte(notifyStart))
+
+				// Call the tool
+				result, err := (*tool).Call(ctx, argsStr)
+
+				// Notify end of tool execution
+				if err != nil {
+					log.Printf("MCP tool %s call failed: %v", toolName, err)
+					notifyError := fmt.Sprintf("\n> ❌ Tool error: %v\n", err)
+					onChunk(ctx, []byte(notifyError))
+				} else {
+					toolUsed = true
+					toolResult = result
+					log.Printf("Successfully used MCP tool '%s'", toolName)
+
+					// Format result in collapsible details
+					notifyResult := fmt.Sprintf("\n<details><summary>Tool Result: %s</summary>\n\n```json\n%s\n```\n\n</details>\n\n", toolName, result)
+					onChunk(ctx, []byte(notifyResult))
+				}
+			}
+		}
+	}
+
+	// Add tool result to conversation if a tool was used
+	if toolUsed && toolResult != "" {
+		toolMsg := llms.MessageContent{
+			Role: llms.ChatMessageTypeSystem,
+			Parts: []llms.ContentPart{
+				llms.TextPart(fmt.Sprintf("I used the '%s' tool to help with your request. Here's the result:\n\n%s", toolName, toolResult)),
+			},
+		}
+		a.messages = append(a.messages, toolMsg)
+	}
+
+	// Call LLM with full history and streaming
+	response, err := a.llm.GenerateContent(ctx, a.messages, llms.WithStreamingFunc(onChunk))
 	if err != nil {
 		return "", fmt.Errorf("LLM call failed: %w", err)
 	}
@@ -896,55 +1038,27 @@ func (cs *ChatServer) HandleChatStream(w http.ResponseWriter, r *http.Request, a
 	fmt.Fprintf(w, "event: start\ndata: {\"type\": \"start\"}\n\n")
 	flusher.Flush()
 
-	// Create a streaming response collector
-	var responseBuilder strings.Builder
+	// Define streaming callback
+	streamFunc := func(ctx context.Context, chunk []byte) error {
+		data := map[string]any{
+			"type":  "chunk",
+			"chunk": string(chunk),
+		}
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", jsonData)
+		flusher.Flush()
+		return nil
+	}
 
-	// Get the full response from agent
-	response, err := agent.Chat(ctx, message, enableSkills, enableMCP)
+	// Get the full response from agent while streaming
+	response, err := agent.ChatStream(ctx, message, enableSkills, enableMCP, streamFunc)
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: {\"type\": \"error\", \"error\": %q}\n\n", err.Error())
 		flusher.Flush()
 		return
-	}
-
-	// Simulate streaming by sending chunks
-	// Use runes to avoid splitting UTF-8 characters
-	runes := []rune(response)
-	chunkSize := 5 // Send 5 runes at a time (better for multi-byte characters)
-	for i := 0; i < len(runes); i += chunkSize {
-		select {
-		case <-ctx.Done():
-			// Context cancelled, send end event with partial response
-			partialData := map[string]any{
-				"type":    "end",
-				"message": responseBuilder.String(),
-			}
-			jsonPartialData, _ := json.Marshal(partialData)
-			fmt.Fprintf(w, "event: end\ndata: %s\n\n", jsonPartialData)
-			flusher.Flush()
-			return
-		default:
-			end := i + chunkSize
-			if end > len(runes) {
-				end = len(runes)
-			}
-
-			chunk := string(runes[i:end])
-			responseBuilder.WriteString(chunk)
-
-			// Send chunk event
-			data := map[string]any{
-				"type":  "chunk",
-				"chunk": chunk,
-				"index": i,
-			}
-			jsonData, _ := json.Marshal(data)
-			fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", jsonData)
-			flusher.Flush()
-
-			// Small delay to simulate streaming
-			time.Sleep(100 * time.Millisecond)
-		}
 	}
 
 	// Save the complete response to history
