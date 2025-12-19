@@ -617,7 +617,8 @@ func getClientID(r *http.Request) string {
 
 // ChatServer manages HTTP endpoints and chat agents
 type ChatServer struct {
-	sessionManager  *sessionpkg.SessionManager
+	maxHistory      int
+	sessionDir      string
 	agents          map[string]ChatAgent
 	llm             llms.Model
 	agentMu         sync.RWMutex
@@ -770,8 +771,9 @@ func NewChatServer(sessionDir string, maxHistory int, port string) (*ChatServer,
 		jwtAuth:       jwtAuth,
 		authAPI:       authAPI,
 		staticHandler: staticHandler,
-		sessionManager:    sessionpkg.NewSessionManager(sessionDir, maxHistory),
-		agents:           make(map[string]ChatAgent),
+		maxHistory:    maxHistory,
+		sessionDir:    sessionDir,
+		agents:        make(map[string]ChatAgent),
 		llm:              llm,
 		port:             port,
 		config:           *config,
@@ -799,8 +801,9 @@ func (cs *ChatServer) GetSessionManager(clientID string) *sessionpkg.SessionMana
 
 	sm, exists := cs.sessionManagers[clientID]
 	if !exists {
-		clientSessionDir := fmt.Sprintf("%s/clients/%s", cs.sessionManager.GetSessionDir(), clientID)
-		sm = sessionpkg.NewSessionManager(clientSessionDir, cs.sessionManager.GetMaxHistory())
+		clientSessionDir := fmt.Sprintf("%s/clients/%s", cs.sessionDir, clientID)
+		store := sessionpkg.NewFileSessionStore(clientSessionDir)
+		sm = sessionpkg.NewSessionManager(store, cs.maxHistory)
 		cs.sessionManagers[clientID] = sm
 	}
 	return sm
@@ -1481,7 +1484,7 @@ func (cs *ChatServer) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"chatTitle":      "聊天智能体",
 		"appLogo":        "/static/images/logo.png",
-		"enableFeedback": false, // TODO: Add feedback feature to config
+		"enableFeedback": cs.config.Features.FeedbackEnabled,
 		"environment":    "development", // TODO: Get from config manager
 		"llmModel":       cs.config.LLM.Model,
 		"version":        "1.0.0",

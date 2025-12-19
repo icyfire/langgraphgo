@@ -49,6 +49,7 @@
   "features": {
     "artifacts_enabled": true,
     "tools_enabled": true,
-    "websocket_enabled": true
+    "websocket_enabled": true,
+    "feedback_enabled": true
   }
 }

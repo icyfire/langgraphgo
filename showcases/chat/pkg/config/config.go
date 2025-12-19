@@ -151,6 +151,7 @@ type FeaturesConfig struct {
 	WebSocketEnabled    bool `json:"websocket_enabled" yaml:"websocket_enabled" env:"FEATURES_WEBSOCKET" default:"true"`
 	FileUploadEnabled   bool `json:"file_upload_enabled" yaml:"file_upload_enabled" env:"FEATURES_FILE_UPLOAD" default:"false"`
 	VoiceEnabled        bool `json:"voice_enabled" yaml:"voice_enabled" env:"FEATURES_VOICE" default:"false"`
+	FeedbackEnabled     bool `json:"feedback_enabled" yaml:"feedback_enabled" env:"FEATURES_FEEDBACK" default:"true"`
 }
 
 // Manager manages configuration with hot reload capability
@@ -302,6 +303,7 @@ func (m *Manager) loadDefaults() {
 			WebSocketEnabled:  true,
 			FileUploadEnabled: false,
 			VoiceEnabled:      false,
+			FeedbackEnabled:   true,
 		},
 	}
 }
