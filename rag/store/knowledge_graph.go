@@ -18,8 +18,12 @@ func NewKnowledgeGraph(databaseURL string) (rag.KnowledgeGraph, error) {
 		}, nil
 	}
 
+	if strings.HasPrefix(databaseURL, "falkordb://") {
+		return NewFalkorDBGraph(databaseURL)
+	}
+
 	// Placeholder for other database types
-	return nil, fmt.Errorf("only memory:// URLs are currently supported")
+	return nil, fmt.Errorf("only memory:// and falkordb:// URLs are currently supported")
 }
 
 // MemoryGraph implements an in-memory knowledge graph
