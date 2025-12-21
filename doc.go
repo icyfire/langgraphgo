@@ -207,6 +207,41 @@
 //	logger := log.NewDefaultLogger(log.LogLevelInfo)
 //	listener := graph.NewLoggingListener(logger, log.LogLevelInfo, false)
 //
+// # RAG (Retrieval-Augmented Generation) Package
+//
+// The rag package provides comprehensive RAG capabilities for LangGraph applications:
+//
+//	// Basic Vector RAG
+//	llm, _ := openai.New()
+//	embedder, _ := openai.NewEmbedder()
+//	vectorStore, _ := pgvector.New(ctx, pgvector.WithEmbedder(embedder))
+//
+//	vectorRAG := rag.NewVectorRAG(llm, embedder, vectorStore, 5)
+//	result, _ := vectorRAG.Query(ctx, "What is quantum computing?")
+//
+//	// GraphRAG with Knowledge Graph
+//	graphRAG, _ := rag.NewGraphRAGEngine(rag.GraphRAGConfig{
+//		DatabaseURL:     "falkordb://localhost:6379",
+//		ModelProvider:   "openai",
+//		EntityTypes:     []string{"PERSON", "ORGANIZATION", "LOCATION"},
+//		EnableReasoning: true,
+//	}, llm, embedder)
+//
+//	// Hybrid RAG combining vector and graph approaches
+//	vectorRetriever := retrievers.NewVectorRetriever(vectorStore, embedder, config)
+//	graphRetriever := retrievers.NewGraphRetriever(knowledgeGraph, embedder, config)
+//	hybridRetriever := retrievers.NewHybridRetriever(
+//		[]rag.Retriever{vectorRetriever, graphRetriever},
+//		[]float64{0.6, 0.4}, config)
+//
+// # RAG Features
+//
+//   - Multiple Retrieval Strategies: Vector similarity, graph-based, hybrid
+//   - Knowledge Graph Integration: Automatic entity and relationship extraction
+//   - Document Processing: Various loaders and text splitters
+//   - Flexible Storage: Support for multiple vector stores and graph databases
+//   - LangGraph Integration: Seamless integration with agents and workflows
+//
 // # Advanced Examples
 //
 // 1. Multi-Agent System with Supervisor

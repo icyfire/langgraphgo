@@ -1,73 +1,29 @@
-package prebuilt
+package rag
 
 import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
 	"github.com/tmc/langchaingo/llms"
 )
 
-// Document represents a document with content and metadata
-type Document struct {
-	PageContent string
-	Metadata    map[string]any
-}
-
-// DocumentLoader loads documents from various sources
-type DocumentLoader interface {
-	Load(ctx context.Context) ([]Document, error)
-}
-
-// TextSplitter splits documents into smaller chunks
-type TextSplitter interface {
-	SplitDocuments(documents []Document) ([]Document, error)
-}
-
-// Embedder generates embeddings for text
-type Embedder interface {
-	EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error)
-	EmbedQuery(ctx context.Context, text string) ([]float64, error)
-}
-
-// VectorStore stores and retrieves document embeddings
-type VectorStore interface {
-	AddDocuments(ctx context.Context, documents []Document, embeddings [][]float64) error
-	SimilaritySearch(ctx context.Context, query string, k int) ([]Document, error)
-	SimilaritySearchWithScore(ctx context.Context, query string, k int) ([]DocumentWithScore, error)
-}
-
-// DocumentWithScore represents a document with its similarity score
-type DocumentWithScore struct {
-	Document Document
-	Score    float64
-}
-
-// Retriever retrieves relevant documents for a query
-type Retriever interface {
-	GetRelevantDocuments(ctx context.Context, query string) ([]Document, error)
-}
-
-// Reranker reranks retrieved documents based on relevance
-type Reranker interface {
-	Rerank(ctx context.Context, query string, documents []Document) ([]DocumentWithScore, error)
-}
-
 // RAGState represents the state flowing through a RAG pipeline
 type RAGState struct {
 	Query              string
-	Documents          []Document
-	RetrievedDocuments []Document
-	RankedDocuments    []DocumentWithScore
+	Documents          []RAGDocument
+	RetrievedDocuments []RAGDocument
+	RankedDocuments    []DocumentSearchResult
 	Context            string
 	Answer             string
 	Citations          []string
 	Metadata           map[string]any
 }
 
-// RAGConfig configures a RAG pipeline
-type RAGConfig struct {
+// PipelineConfig configures a RAG pipeline
+type PipelineConfig struct {
 	// Retrieval configuration
 	TopK           int     // Number of documents to retrieve
 	ScoreThreshold float64 // Minimum relevance score
@@ -81,8 +37,8 @@ type RAGConfig struct {
 	Temperature      float64
 
 	// Components
-	Loader      DocumentLoader
-	Splitter    TextSplitter
+	Loader      RAGDocumentLoader
+	Splitter    RAGTextSplitter
 	Embedder    Embedder
 	VectorStore VectorStore
 	Retriever   Retriever
@@ -90,9 +46,9 @@ type RAGConfig struct {
 	LLM         llms.Model
 }
 
-// DefaultRAGConfig returns a default RAG configuration
-func DefaultRAGConfig() *RAGConfig {
-	return &RAGConfig{
+// DefaultPipelineConfig returns a default RAG configuration
+func DefaultPipelineConfig() *PipelineConfig {
+	return &PipelineConfig{
 		TopK:             4,
 		ScoreThreshold:   0.7,
 		UseReranking:     false,
@@ -106,14 +62,14 @@ func DefaultRAGConfig() *RAGConfig {
 
 // RAGPipeline represents a complete RAG pipeline
 type RAGPipeline struct {
-	config *RAGConfig
+	config *PipelineConfig
 	graph  *graph.StateGraph
 }
 
 // NewRAGPipeline creates a new RAG pipeline with the given configuration
-func NewRAGPipeline(config *RAGConfig) *RAGPipeline {
+func NewRAGPipeline(config *PipelineConfig) *RAGPipeline {
 	if config == nil {
-		config = DefaultRAGConfig()
+		config = DefaultPipelineConfig()
 	}
 
 	return &RAGPipeline{
@@ -249,7 +205,7 @@ func (p *RAGPipeline) BuildConditionalRAG() error {
 }
 
 // Compile compiles the RAG pipeline into a runnable graph
-func (p *RAGPipeline) Compile() (*graph.Runnable, error) {
+func (p *RAGPipeline) Compile() (*graph.StateRunnable, error) {
 	return p.graph.Compile()
 }
 
@@ -263,13 +219,13 @@ func (p *RAGPipeline) GetGraph() *graph.StateGraph {
 func (p *RAGPipeline) retrieveNode(ctx context.Context, state any) (any, error) {
 	ragState := state.(RAGState)
 
-	docs, err := p.config.Retriever.GetRelevantDocuments(ctx, ragState.Query)
+	docs, err := p.config.Retriever.Retrieve(ctx, ragState.Query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieval failed: %w", err)
 	}
 
-	ragState.RetrievedDocuments = docs
-	ragState.Documents = docs
+	ragState.RetrievedDocuments = convertToRAGDocuments(docs)
+	ragState.Documents = convertToRAGDocuments(docs)
 
 	return ragState, nil
 }
@@ -279,10 +235,10 @@ func (p *RAGPipeline) rerankNode(ctx context.Context, state any) (any, error) {
 
 	if p.config.Reranker == nil {
 		// If no reranker, just assign scores based on order
-		rankedDocs := make([]DocumentWithScore, len(ragState.RetrievedDocuments))
+		rankedDocs := make([]DocumentSearchResult, len(ragState.RetrievedDocuments))
 		for i, doc := range ragState.RetrievedDocuments {
-			rankedDocs[i] = DocumentWithScore{
-				Document: doc,
+			rankedDocs[i] = DocumentSearchResult{
+				Document: doc.Document(),
 				Score:    1.0 - float64(i)*0.1, // Simple decreasing score
 			}
 		}
@@ -290,17 +246,26 @@ func (p *RAGPipeline) rerankNode(ctx context.Context, state any) (any, error) {
 		return ragState, nil
 	}
 
-	rankedDocs, err := p.config.Reranker.Rerank(ctx, ragState.Query, ragState.RetrievedDocuments)
+	// Convert to DocumentSearchResult for reranking
+	searchResults := make([]DocumentSearchResult, len(ragState.RetrievedDocuments))
+	for i, doc := range ragState.RetrievedDocuments {
+		searchResults[i] = DocumentSearchResult{
+			Document: doc.Document(),
+			Score:    1.0 - float64(i)*0.1,
+		}
+	}
+
+	rerankedResults, err := p.config.Reranker.Rerank(ctx, ragState.Query, searchResults)
 	if err != nil {
 		return nil, fmt.Errorf("reranking failed: %w", err)
 	}
 
-	ragState.RankedDocuments = rankedDocs
+	ragState.RankedDocuments = rerankedResults
 
 	// Update documents with reranked order
-	docs := make([]Document, len(rankedDocs))
-	for i, rd := range rankedDocs {
-		docs[i] = rd.Document
+	docs := make([]RAGDocument, len(rerankedResults))
+	for i, rd := range rerankedResults {
+		docs[i] = DocumentFromRAGDocument(rd.Document)
 	}
 	ragState.Documents = docs
 
@@ -329,7 +294,7 @@ func (p *RAGPipeline) generateNode(ctx context.Context, state any) (any, error) 
 		if s, ok := doc.Metadata["source"]; ok {
 			source = fmt.Sprintf("%v", s)
 		}
-		contextParts = append(contextParts, fmt.Sprintf("[%d] Source: %s\nContent: %s", i+1, source, doc.PageContent))
+		contextParts = append(contextParts, fmt.Sprintf("[%d] Source: %s\nContent: %s", i+1, source, doc.Content))
 	}
 	ragState.Context = strings.Join(contextParts, "\n\n")
 
@@ -371,21 +336,49 @@ func (p *RAGPipeline) formatCitationsNode(ctx context.Context, state any) (any, 
 	return ragState, nil
 }
 
-// VectorStoreRetriever implements Retriever using a VectorStore
-type VectorStoreRetriever struct {
-	VectorStore VectorStore
-	TopK        int
+// RAGDocument represents a document with content and metadata (for pipeline compatibility)
+type RAGDocument struct {
+	Content   string            `json:"content"`
+	Metadata  map[string]any     `json:"metadata"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
-// NewVectorStoreRetriever creates a new VectorStoreRetriever
-func NewVectorStoreRetriever(vectorStore VectorStore, topK int) *VectorStoreRetriever {
-	return &VectorStoreRetriever{
-		VectorStore: vectorStore,
-		TopK:        topK,
+// ConvertToDocument converts RAGDocument to Document
+func (d RAGDocument) Document() Document {
+	return Document{
+		Content:   d.Content,
+		Metadata:  d.Metadata,
+		CreatedAt: d.CreatedAt,
+		UpdatedAt: d.UpdatedAt,
 	}
 }
 
-// GetRelevantDocuments retrieves relevant documents for a query
-func (r *VectorStoreRetriever) GetRelevantDocuments(ctx context.Context, query string) ([]Document, error) {
-	return r.VectorStore.SimilaritySearch(ctx, query, r.TopK)
+// DocumentFromRAGDocument converts Document to RAGDocument
+func DocumentFromRAGDocument(doc Document) RAGDocument {
+	return RAGDocument{
+		Content:   doc.Content,
+		Metadata:  doc.Metadata,
+		CreatedAt: doc.CreatedAt,
+		UpdatedAt: doc.UpdatedAt,
+	}
+}
+
+// RAGDocumentLoader represents a document loader for RAG pipelines
+type RAGDocumentLoader interface {
+	Load(ctx context.Context) ([]RAGDocument, error)
+}
+
+// RAGTextSplitter represents a text splitter for RAG pipelines
+type RAGTextSplitter interface {
+	SplitDocuments(documents []RAGDocument) ([]RAGDocument, error)
+}
+
+// convertToRAGDocuments converts Document to RAGDocument
+func convertToRAGDocuments(docs []Document) []RAGDocument {
+	result := make([]RAGDocument, len(docs))
+	for i, doc := range docs {
+		result[i] = DocumentFromRAGDocument(doc)
+	}
+	return result
 }
