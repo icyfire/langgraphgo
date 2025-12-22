@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smallnest/langgraphgo/adapter"
 	"github.com/smallnest/langgraphgo/rag"
 	"github.com/smallnest/langgraphgo/rag/engine"
 	"github.com/smallnest/langgraphgo/rag/store"
@@ -23,7 +24,7 @@ func main() {
 	}
 
 	// Create adapter for our LLM interface
-	llm := rag.NewOpenAIAdapter(ollm)
+	llm := adapter.NewOpenAIAdapter(ollm)
 
 	// Initialize embedder for entity extraction
 	embedder := store.NewMockEmbedder(128)
@@ -84,7 +85,7 @@ Text: %s`,
 	// Sample documents about technology companies and their products
 	documents := []rag.Document{
 		{
-			ID:      "doc1",
+			ID: "doc1",
 			Content: "Apple Inc. is a technology company headquartered in Cupertino, California. " +
 				"The company was founded by Steve Jobs, Steve Wozniak, and Ronald Wayne in 1976. " +
 				"Apple is known for its consumer electronics products including the iPhone, iPad, and Mac computers. " +
@@ -95,7 +96,7 @@ Text: %s`,
 			},
 		},
 		{
-			ID:      "doc2",
+			ID: "doc2",
 			Content: "Microsoft Corporation is an American technology company based in Redmond, Washington. " +
 				"Founded by Bill Gates and Paul Allen in 1975, Microsoft develops software, hardware, and cloud services. " +
 				"The company's flagship products include the Windows operating system and Microsoft Office suite. " +
@@ -106,7 +107,7 @@ Text: %s`,
 			},
 		},
 		{
-			ID:      "doc3",
+			ID: "doc3",
 			Content: "Google LLC is an American technology company and subsidiary of Alphabet Inc. " +
 				"Founded by Larry Page and Sergey Brin in 1998, Google is headquartered in Mountain View, California. " +
 				"The company is known for its search engine, Android mobile operating system, and web services. " +
@@ -117,7 +118,7 @@ Text: %s`,
 			},
 		},
 		{
-			ID:      "doc4",
+			ID: "doc4",
 			Content: "Tesla, Inc. is an American electric vehicle and clean energy company based in Palo Alto, California. " +
 				"Founded by Elon Musk, Tesla designs and manufactures electric cars, battery energy storage, and solar products. " +
 				"The Tesla Model S is an all-electric sedan, and the Model Y is a compact electric SUV. " +
@@ -128,7 +129,7 @@ Text: %s`,
 			},
 		},
 		{
-			ID:      "doc5",
+			ID: "doc5",
 			Content: "Amazon.com, Inc. is an American multinational technology company based in Seattle, Washington. " +
 				"Founded by Jeff Bezos in 1994, Amazon started as an online bookstore but has expanded to e-commerce, " +
 				"digital streaming, and artificial intelligence. Amazon Web Services (AWS) is the market leader in cloud computing. " +

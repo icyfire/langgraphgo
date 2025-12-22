@@ -53,8 +53,11 @@ func (f *FalkorDBGraph) AddEntity(ctx context.Context, entity *rag.Entity) error
 	props := entityToMap(entity)
 	propsStr := propsToString(props)
 
+	// Escape single quotes in entity ID for Cypher compatibility
+	escapedID := strings.ReplaceAll(entity.ID, "'", "\\'")
+
 	// Using MERGE to avoid duplicates
-	query := fmt.Sprintf("MERGE (n:%s {id: '%s'}) SET n += %s", label, entity.ID, propsStr)
+	query := fmt.Sprintf("MERGE (n:%s {id: '%s'}) SET n += %s", label, escapedID, propsStr)
 
 	_, err := g.Query(ctx, query)
 	return err
@@ -68,9 +71,14 @@ func (f *FalkorDBGraph) AddRelationship(ctx context.Context, rel *rag.Relationsh
 	props := relationshipToMap(rel)
 	propsStr := propsToString(props)
 
+	// Escape single quotes for Cypher compatibility
+	escapedSource := strings.ReplaceAll(rel.Source, "'", "\\'")
+	escapedTarget := strings.ReplaceAll(rel.Target, "'", "\\'")
+	escapedID := strings.ReplaceAll(rel.ID, "'", "\\'")
+
 	// MATCH source and target, then MERGE relationship
 	query := fmt.Sprintf("MATCH (a {id: '%s'}), (b {id: '%s'}) MERGE (a)-[r:%s {id: '%s'}]->(b) SET r += %s",
-		rel.Source, rel.Target, relType, rel.ID, propsStr)
+		escapedSource, escapedTarget, relType, escapedID, propsStr)
 
 	_, err := g.Query(ctx, query)
 	return err
@@ -335,69 +343,59 @@ func relationshipToMap(r *rag.Relationship) map[string]interface{} {
 	return m
 }
 
-// Parsing Helpers for Redigo Graph Response
-// A Node in RedisGraph response is usually: [ID (int64), Labels ([]interface{}), Properties ([]interface{})]
-// Properties are [key, value, key, value...]
+func toString(i interface{}) string {
+	if s, ok := i.(string); ok {
+		return s
+	}
+	if b, ok := i.([]byte); ok {
+		return string(b)
+	}
+	return fmt.Sprint(i)
+}
+
+// Parsing Helpers
 
 func parseNode(obj interface{}) *rag.Entity {
-	// Redigo might return []interface{}
 	vals, ok := obj.([]interface{})
-	if !ok || len(vals) < 3 {
+	if !ok {
 		return nil
 	}
-
-	// Index 0: ID (internal graph id, not our string ID) - usually int64
-	// Index 1: Labels - []interface{} of strings
-	// Index 2: Properties - []interface{} of [key, value] pairs (Redigo default?) or just flat?
-	// RedisGraph protocol:
-	// Node: [id, [label1, label2], [[key1, type1, val1], ...]] -> No, this depends on compact mode.
-	// I used "GRAPH.QUERY ... --compact".
-	// In --compact mode (which redigo-redisgraph often expects? No, I added it manually).
-	// If I REMOVE --compact, the response is text based for results?
-	// No, default is header/results/stats.
-	// But the result rows contain objects.
-
-	// Let's assume standard object structure returned by redis.Values
 
 	e := &rag.Entity{
 		Properties: make(map[string]interface{}),
 	}
 
-	// Labels
-	if labels, ok := vals[1].([]interface{}); ok && len(labels) > 0 {
-		if l, ok := labels[0].([]byte); ok {
-			e.Type = string(l)
-		} else if l, ok := labels[0].(string); ok {
-			e.Type = l
+	// Check for KV list format: [[key, val], [key, val], ...]
+	// FalkorDB sometimes returns this structure
+	if len(vals) > 0 {
+		if first, ok := vals[0].([]interface{}); ok && len(first) == 2 {
+			k := toString(first[0])
+			if k == "id" || k == "labels" || k == "properties" {
+				return parseNodeKV(vals)
+			}
 		}
 	}
 
-	// Properties
-	if props, ok := vals[2].([]interface{}); ok {
-		for i := 0; i < len(props); i++ {
-			// Prop is usually [key, value]
-			if propPair, ok := props[i].([]interface{}); ok && len(propPair) == 2 {
-				key := ""
-				if k, ok := propPair[0].([]byte); ok {
-					key = string(k)
-				} else if k, ok := propPair[0].(string); ok {
-					key = k
-				}
+	// Standard format: [id, labels, properties]
+	if len(vals) >= 3 {
+		// Labels
+		if labels, ok := vals[1].([]interface{}); ok && len(labels) > 0 {
+			if l, ok := labels[0].([]byte); ok {
+				e.Type = string(l)
+			} else if l, ok := labels[0].(string); ok {
+				e.Type = l
+			}
+		}
 
-				val := propPair[1]
-				// Convert val from []byte if needed
-				if b, ok := val.([]byte); ok {
-					val = string(b)
-				}
-
-				switch key {
-				case "id":
-					e.ID = fmt.Sprint(val)
-				case "name":
-					e.Name = fmt.Sprint(val)
-				default:
-					e.Properties[key] = val
-				}
+		// Properties
+		if props, ok := vals[2].([]interface{}); ok {
+			parseFalkorDBProperties(props, e)
+		}
+	} else if len(vals) >= 2 {
+		// FalkorDB format: [node_id, complex_structure]
+		if complexStruct, ok := vals[1].([]interface{}); ok && len(complexStruct) >= 3 {
+			if props, ok := complexStruct[2].([]interface{}); ok {
+				parseFalkorDBProperties(props, e)
 			}
 		}
 	}
@@ -405,19 +403,102 @@ func parseNode(obj interface{}) *rag.Entity {
 	return e
 }
 
+func parseNodeKV(pairs []interface{}) *rag.Entity {
+	e := &rag.Entity{Properties: make(map[string]interface{})}
+	for _, item := range pairs {
+		pair, ok := item.([]interface{})
+		if !ok || len(pair) != 2 {
+			continue
+		}
+		key := toString(pair[0])
+		val := pair[1]
+
+		switch key {
+		case "id":
+			e.ID = toString(val)
+		case "labels":
+			if lbls, ok := val.([]interface{}); ok && len(lbls) > 0 {
+				e.Type = toString(lbls[0])
+			}
+		case "properties":
+			if props, ok := val.([]interface{}); ok {
+				for _, p := range props {
+					if kv, ok := p.([]interface{}); ok && len(kv) == 2 {
+						pk := toString(kv[0])
+						pv := toString(kv[1])
+						if pk == "id" {
+							e.ID = pv
+						} else if pk == "name" {
+							e.Name = pv
+						} else if pk == "type" {
+							e.Type = pv
+						} else {
+							e.Properties[pk] = pv
+						}
+					}
+				}
+			}
+		}
+	}
+	return e
+}
+
 func parseEdge(obj interface{}, sourceID, targetID string) *rag.Relationship {
 	vals, ok := obj.([]interface{})
-	if !ok || len(vals) < 3 {
+	if !ok {
 		return nil
 	}
-
-	// Edge: [id, type, src, dst, props] -> Structure varies.
-	// Standard: [id, type, srcID, dstID, properties]
 
 	rel := &rag.Relationship{
 		Source:     sourceID,
 		Target:     targetID,
 		Properties: make(map[string]interface{}),
+	}
+
+	// Check for KV list format: [[key, val], [key, val], ...]
+	if len(vals) > 0 {
+		if first, ok := vals[0].([]interface{}); ok && len(first) == 2 {
+			k := toString(first[0])
+			if k == "id" || k == "type" || k == "properties" || k == "src" || k == "dst" {
+				// Parse KV edge
+				for _, item := range vals {
+					pair, ok := item.([]interface{})
+					if !ok || len(pair) != 2 {
+						continue
+					}
+					key := toString(pair[0])
+					val := pair[1]
+
+					switch key {
+					case "id":
+						rel.ID = toString(val)
+					case "type":
+						rel.Type = toString(val)
+					case "properties":
+						if props, ok := val.([]interface{}); ok {
+							for _, p := range props {
+								if kv, ok := p.([]interface{}); ok && len(kv) == 2 {
+									pk := toString(kv[0])
+									pv := toString(kv[1])
+									if pk == "id" {
+										rel.ID = pv
+									} else if pk == "weight" {
+										rel.Weight = 0
+									} else {
+										rel.Properties[pk] = pv
+									}
+								}
+							}
+						}
+					}
+				}
+				return rel
+			}
+		}
+	}
+
+	if len(vals) < 3 {
+		return nil
 	}
 
 	// Type (Index 1)
@@ -432,13 +513,7 @@ func parseEdge(obj interface{}, sourceID, targetID string) *rag.Relationship {
 		if props, ok := vals[4].([]interface{}); ok {
 			for i := 0; i < len(props); i++ {
 				if propPair, ok := props[i].([]interface{}); ok && len(propPair) == 2 {
-					key := ""
-					if k, ok := propPair[0].([]byte); ok {
-						key = string(k)
-					} else if k, ok := propPair[0].(string); ok {
-						key = k
-					}
-
+					key := toString(propPair[0])
 					val := propPair[1]
 					if b, ok := val.([]byte); ok {
 						val = string(b)
@@ -448,8 +523,7 @@ func parseEdge(obj interface{}, sourceID, targetID string) *rag.Relationship {
 					case "id":
 						rel.ID = fmt.Sprint(val)
 					case "weight":
-						// Handle float conversion
-						rel.Weight = 0 // simplify
+						rel.Weight = 0
 					default:
 						rel.Properties[key] = val
 					}
@@ -459,4 +533,58 @@ func parseEdge(obj interface{}, sourceID, targetID string) *rag.Relationship {
 	}
 
 	return rel
+}
+
+// parseFalkorDBProperties parses FalkorDB property format: [[id, len, str], [id, len, str], ...]
+func parseFalkorDBProperties(props []interface{}, e *rag.Entity) {
+	for i := 0; i < len(props)-1; i += 2 {
+		if i+1 < len(props) {
+			// Key
+			key := extractStringFromFalkorDBFormat(props[i])
+			// Value
+			value := extractStringFromFalkorDBFormat(props[i+1])
+
+			if key != "" {
+				switch key {
+				case "id":
+					e.ID = value
+				case "name":
+					e.Name = value
+				case "type":
+					e.Type = value
+				default:
+					e.Properties[key] = value
+				}
+			}
+		}
+	}
+}
+
+// extractStringFromFalkorDBFormat extracts string from format [id, len, str]
+func extractStringFromFalkorDBFormat(item interface{}) string {
+	// Handle different possible formats
+	switch v := item.(type) {
+	case []interface{}:
+		if len(v) >= 3 {
+			// Format: [id, length, string]
+			if str, ok := v[2].(string); ok {
+				return str
+			} else if bytes, ok := v[2].([]byte); ok {
+				return string(bytes)
+			}
+		} else if len(v) == 2 {
+			// Format: [id, string]
+			if str, ok := v[1].(string); ok {
+				return str
+			} else if bytes, ok := v[1].([]byte); ok {
+				return string(bytes)
+			}
+		}
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	}
+
+	return ""
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/redis/go-redis/v9"
@@ -16,6 +17,8 @@ func quoteString(i interface{}) interface{} {
 		if len(x) == 0 {
 			return "\"\""
 		}
+		// Escape single quotes for Cypher compatibility
+		x = strings.ReplaceAll(x, "'", "\\'")
 		if x[0] != '"' {
 			x = "\"" + x
 		}
@@ -166,7 +169,7 @@ func (g *Graph) Query(ctx context.Context, q string) (QueryResult, error) {
 	qr := QueryResult{}
 
 	// go-redis Do returns a Cmd which can be used to get the result
-	res, err := g.Conn.Do(ctx, "GRAPH.QUERY", g.Name, q, "--compact").Result()
+	res, err := g.Conn.Do(ctx, "GRAPH.QUERY", g.Name, q).Result()
 	if err != nil {
 		return qr, err
 	}
@@ -221,6 +224,15 @@ func (g *Graph) Query(ctx context.Context, q string) (QueryResult, error) {
 				qr.Statistics[i] = fmt.Sprint(s)
 			}
 		}
+	} else if len(r) == 1 {
+		// Only statistics (e.g., when MERGE operation doesn't return data)
+		if stats, ok := r[0].([]interface{}); ok {
+			qr.Statistics = make([]string, len(stats))
+			for i, s := range stats {
+				qr.Statistics[i] = fmt.Sprint(s)
+			}
+		}
+		// No results to process, which is fine for write operations
 	} else {
 		return qr, fmt.Errorf("unexpected response length: %d", len(r))
 	}

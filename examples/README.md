@@ -70,6 +70,8 @@ This directory contains various examples demonstrating the features of LangGraph
 - **[RAG with LangChain](rag_with_langchain/README.md)**: RAG using LangChain components.
 - **[RAG with VectorStores](rag_langchain_vectorstore_example/README.md)**: RAG using LangChain VectorStores.
 - **[RAG with Chroma](rag_chroma_example/README.md)**: RAG using Chroma database.
+- **[RAG with FalkorDB Graph](rag_falkordb_graph/README.md)**: RAG using FalkorDB knowledge graph with automatic entity extraction.
+- **[RAG with FalkorDB Simple](rag_falkordb_simple/README.md)**: Simple RAG with FalkorDB using manual entity/relationship creation.
 
 ## Other
 - **[Visualization](visualization/README.md)**: Generating Mermaid diagrams for graphs.
