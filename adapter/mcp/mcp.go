@@ -33,8 +33,13 @@ func (t *MCPTool) Call(ctx context.Context, input string) (string, error) {
 	var args map[string]any
 	if input != "" {
 		if err := json.Unmarshal([]byte(input), &args); err != nil {
-			return "", fmt.Errorf("failed to unmarshal MCP tool arguments: %w", err)
+			// 如果 JSON 解析失败，尝试作为纯文本参数传递
+			// 有些 MCP 工具可能接受简单的字符串参数
+			args = map[string]any{"input": input}
 		}
+	} else {
+		// 空输入时使用空对象
+		args = make(map[string]any)
 	}
 
 	// Call the MCP tool through the client
