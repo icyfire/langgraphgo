@@ -1,25 +1,31 @@
-package ernie
+package doubao
 
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/tmc/langchaingo/llms"
+	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 )
 
-// getTestModel returns the model name from env or default.
+// getTestModel returns the model name from env or empty string.
 //
-// IMPORTANT: Set the ERNIE_MODEL environment variable to your preferred model.
-// Common models: ernie-4.5-turbo-128k, ernie-speed-128k, ernie-speed-8k, deepseek-r1
+// IMPORTANT: The Doubao API requires custom Endpoint IDs that you create in the
+// Volcengine console. Set the DOUBAO_MODEL environment variable to your
+// custom Endpoint ID to run tests with your specific endpoint.
+//
+// To get your Endpoint ID, visit: https://www.volcengine.com/docs/82379/1330310
 func getTestModel() ModelName {
-	return ModelName(getEnvOrDefault("ERNIE_MODEL", "ernie-speed-8k"))
+	return ModelName(getEnvOrDefault("DOUBAO_MODEL", ""))
 }
 
-// getTestEmbeddingModel returns the embedding model name from env or default.
+// getTestEmbeddingModel returns the embedding model name from env or empty string.
+//
+// IMPORTANT: Set the DOUBAO_EMBEDDING_MODEL environment variable to your
+// custom embedding Endpoint ID to run embedding tests.
 func getTestEmbeddingModel() ModelName {
-	return ModelName(getEnvOrDefault("ERNIE_EMBEDDING_MODEL", "embedding-v1"))
+	return ModelName(getEnvOrDefault("DOUBAO_EMBEDDING_MODEL", ""))
 }
 
 // TestLLM_Create tests the LLM creation with various options.
@@ -40,14 +46,54 @@ func TestLLM_Create(t *testing.T) {
 			name: "with api key and model",
 			opts: []Option{
 				WithAPIKey("test-key"),
-				WithModel("ernie-speed-8k"),
+				WithModel("test-endpoint-id"),
 			},
 			wantErr: false,
+		},
+		{
+			name: "with ak/sk",
+			opts: []Option{
+				WithAccessKey("test-ak"),
+				WithSecretKey("test-sk"),
+			},
+			wantErr: false,
+		},
+		{
+			name:    "no authentication",
+			opts:    []Option{},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// For the "no authentication" test, temporarily clear env vars
+			if tt.name == "no authentication" {
+				oldAPIKey := os.Getenv("DOUBAO_API_KEY")
+				oldAccessKey := os.Getenv("DOUBAO_ACCESS_KEY")
+				oldSecretKey := os.Getenv("DOUBAO_SECRET_KEY")
+				defer func() {
+					if oldAPIKey != "" {
+						os.Setenv("DOUBAO_API_KEY", oldAPIKey)
+					} else {
+						os.Unsetenv("DOUBAO_API_KEY")
+					}
+					if oldAccessKey != "" {
+						os.Setenv("DOUBAO_ACCESS_KEY", oldAccessKey)
+					} else {
+						os.Unsetenv("DOUBAO_ACCESS_KEY")
+					}
+					if oldSecretKey != "" {
+						os.Setenv("DOUBAO_SECRET_KEY", oldSecretKey)
+					} else {
+						os.Unsetenv("DOUBAO_SECRET_KEY")
+					}
+				}()
+				os.Unsetenv("DOUBAO_API_KEY")
+				os.Unsetenv("DOUBAO_ACCESS_KEY")
+				os.Unsetenv("DOUBAO_SECRET_KEY")
+			}
+
 			llm, err := New(tt.opts...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
@@ -61,16 +107,23 @@ func TestLLM_Create(t *testing.T) {
 }
 
 // TestLLM_GenerateContent tests the content generation with real API.
-// Skipped if QIANFAN_TOKEN is not set.
+// Skipped if DOUBAO_API_KEY or DOUBAO_MODEL is not set.
+//
+// IMPORTANT: This test requires DOUBAO_MODEL to be set to your custom Endpoint ID.
 func TestLLM_GenerateContent(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -102,33 +155,24 @@ func TestLLM_GenerateContent(t *testing.T) {
 
 	t.Logf("Response: %s", content)
 	t.Logf("StopReason: %s", resp.Choices[0].StopReason)
-
-	// Check GenerationInfo for token usage
-	if resp.Choices[0].GenerationInfo != nil {
-		if totalTokens, ok := resp.Choices[0].GenerationInfo["total_tokens"].(int); ok {
-			t.Logf("Total tokens: %d", totalTokens)
-		}
-	}
 }
 
 // TestLLM_CreateEmbedding tests the embedding generation with real API.
-// Skipped if QIANFAN_TOKEN is not set.
+// Skipped if DOUBAO_API_KEY or DOUBAO_EMBEDDING_MODEL is not set.
 func TestLLM_CreateEmbedding(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
 	}
 
 	embeddingModel := getTestEmbeddingModel()
-	if embeddingModel == "embedding-v1" {
-		t.Skip(`ERNIE_EMBEDDING_MODEL not set.
-Please set ERNIE_EMBEDDING_MODEL to a valid embedding endpoint ID.
-Common models: embedding-v1, bge-large-zh, bge-large-en, tao-8k`)
+	if embeddingModel == "" {
+		t.Skip("DOUBAO_EMBEDDING_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(embeddingModel),
+		WithEmbeddingModel(embeddingModel),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -139,11 +183,6 @@ Common models: embedding-v1, bge-large-zh, bge-large-en, tao-8k`)
 
 	embeddings, err := llm.CreateEmbedding(ctx, texts)
 	if err != nil {
-		// Check if it's a 404 error (model not found)
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "ResourceNotFound") {
-			t.Skipf(`Embedding model '%s' not found. Please set ERNIE_EMBEDDING_MODEL to a valid endpoint ID.
-Error: %v`, embeddingModel, err)
-		}
 		t.Fatalf("Failed to create embedding: %v", err)
 	}
 
@@ -160,20 +199,19 @@ Error: %v`, embeddingModel, err)
 
 // TestLLM_CreateEmbeddingMultiple tests embedding generation for multiple texts.
 func TestLLM_CreateEmbeddingMultiple(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
 	}
 
 	embeddingModel := getTestEmbeddingModel()
-	if embeddingModel == "embedding-v1" {
-		t.Skip(`ERNIE_EMBEDDING_MODEL not set.
-Please set ERNIE_EMBEDDING_MODEL to a valid embedding endpoint ID.`)
+	if embeddingModel == "" {
+		t.Skip("DOUBAO_EMBEDDING_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(embeddingModel),
+		WithEmbeddingModel(embeddingModel),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -184,10 +222,6 @@ Please set ERNIE_EMBEDDING_MODEL to a valid embedding endpoint ID.`)
 
 	embeddings, err := llm.CreateEmbedding(ctx, texts)
 	if err != nil {
-		// Check if it's a 404 error (model not found)
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "ResourceNotFound") {
-			t.Skipf(`Embedding model '%s' not found. Please set ERNIE_EMBEDDING_MODEL to a valid endpoint ID.`, embeddingModel)
-		}
 		t.Fatalf("Failed to create embedding: %v", err)
 	}
 
@@ -205,14 +239,19 @@ Please set ERNIE_EMBEDDING_MODEL to a valid embedding endpoint ID.`)
 
 // TestLLM_Call tests the Call method.
 func TestLLM_Call(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -231,60 +270,21 @@ func TestLLM_Call(t *testing.T) {
 	t.Logf("Response: %s", response)
 }
 
-// TestLLM_ModelString tests model name to string conversion.
-func TestLLM_ModelString(t *testing.T) {
-	tests := []struct {
-		name     string
-		model    string
-		expected string
-	}{
-		// 推荐模型
-		{"ERNIE 5.0 Thinking Preview", "ernie-5.0-thinking-preview", "ernie-5.0-thinking-preview"},
-		{"ERNIE 4.5 Turbo 128K", "ernie-4.5-turbo-128k", "ernie-4.5-turbo-128k"},
-		{"DeepSeek R1", "deepseek-r1", "deepseek-r1"},
-
-		// ERNIE系列
-		{"ERNIE Speed 8K", "ernie-speed-8k", "ernie-speed-8k"},
-		{"ERNIE Lite 8K", "ernie-lite-8k", "ernie-lite-8k"},
-		{"ERNIE Tiny 8K", "ernie-tiny-8k", "ernie-tiny-8k"},
-
-		// DeepSeek系列
-		{"DeepSeek V3", "deepseek-v3", "deepseek-v3"},
-		{"DeepSeek V3.2", "deepseek-v3.2", "deepseek-v3.2"},
-
-		// Qwen系列
-		{"Qwen3 8B", "qwen3-8b", "qwen3-8b"},
-		{"Qwen3 32B", "qwen3-32b", "qwen3-32b"},
-
-		// Embedding模型
-		{"Embedding V1", "embedding-v1", "embedding-v1"},
-		{"BGE Large ZH", "bge-large-zh", "bge-large-zh"},
-		{"BGE Large EN", "bge-large-en", "bge-large-en"},
-		{"Tao 8k", "tao-8k", "tao-8k"},
-		{"Qwen3 Embedding 0.6B", "qwen3-embedding-0.6b", "qwen3-embedding-0.6b"},
-		{"Qwen3 Embedding 4B", "qwen3-embedding-4b", "qwen3-embedding-4b"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := modelToModelString(ModelName(tt.model))
-			if result != tt.expected {
-				t.Errorf("modelToModelString(%v) = %s, want %s", tt.model, result, tt.expected)
-			}
-		})
-	}
-}
-
 // TestLLM_Conversation tests a multi-turn conversation.
 func TestLLM_Conversation(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -323,123 +323,170 @@ func TestLLM_Conversation(t *testing.T) {
 
 	content := resp.Choices[0].Content
 	t.Logf("Response: %s", content)
-
-	// Check if the model remembers the name
-	containsName := false
-	lowerContent := content
-	if len(lowerContent) > 0 {
-		// Simple check for name presence
-		for i := 0; i <= len(lowerContent)-5; i++ {
-			if lowerContent[i:i+5] == "Alice" {
-				containsName = true
-				break
-			}
-		}
-	}
-	t.Logf("Model remembers name: %v", containsName)
 }
 
-// TestLLM_DifferentModels tests different model types.
-func TestLLM_DifferentModels(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+// TestLLM_WithAKSK tests AK/SK authentication.
+func TestLLM_WithAKSK(t *testing.T) {
+	ak := os.Getenv("DOUBAO_ACCESS_KEY")
+	sk := os.Getenv("DOUBAO_SECRET_KEY")
+	if ak == "" || sk == "" {
+		t.Skip("DOUBAO_ACCESS_KEY and DOUBAO_SECRET_KEY not set")
 	}
 
-	models := []struct {
-		name ModelName
-		desc string
-	}{
-		{"ernie-speed-8k", "ERNIE Speed 8K - fast response"},
-		{"ernie-tiny-8k", "ERNIE Tiny 8K - lightweight"},
-		{"ernie-lite-8k", "ERNIE Lite 8K - basic"},
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
-	for _, m := range models {
-		t.Run(m.desc, func(t *testing.T) {
-			llm, err := New(
-				WithAPIKey(apiKey),
-				WithModel(m.name),
-			)
-			if err != nil {
-				t.Fatalf("Failed to create LLM: %v", err)
-			}
-
-			ctx := context.Background()
-			response, err := llm.Call(ctx, "Say hello")
-			if err != nil {
-				t.Logf("Model %s error: %v", m.name, err)
-				return
-			}
-
-			if response == "" {
-				t.Errorf("Model %s returned empty response", m.name)
-			}
-
-			t.Logf("Model %s response: %s", m.name, response)
-		})
+	llm, err := New(
+		WithAccessKey(ak),
+		WithSecretKey(sk),
+		WithModel(model),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
 	}
+
+	ctx := context.Background()
+	response, err := llm.Call(ctx, "Say hello")
+	if err != nil {
+		t.Fatalf("Failed to call LLM: %v", err)
+	}
+
+	if response == "" {
+		t.Error("Empty response")
+	}
+
+	t.Logf("Response: %s", response)
 }
 
-// TestLLM_EmbeddingModels tests different embedding models.
-func TestLLM_EmbeddingModels(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+// TestLLM_EmbeddingLarge tests the large embedding model.
+func TestLLM_EmbeddingLarge(t *testing.T) {
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
 	}
 
-	models := []struct {
-		name        ModelName
-		expectedDim int
-		description string
-	}{
-		{"embedding-v1", 384, "Embedding V1 - 384 dimensions"},
-		{"bge-large-zh", 1024, "BGE Large ZH - 1024 dimensions"},
-		{"tao-8k", 1024, "Tao 8k - 1024 dimensions"},
-	}
-
-	for _, m := range models {
-		t.Run(m.description, func(t *testing.T) {
-			llm, err := New(
-				WithAPIKey(apiKey),
-				WithModel(m.name),
-			)
-			if err != nil {
-				t.Fatalf("Failed to create LLM: %v", err)
-			}
-
-			ctx := context.Background()
-			embeddings, err := llm.CreateEmbedding(ctx, []string{"test text"})
-			if err != nil {
-				t.Logf("Model %s error: %v", m.name, err)
-				return
-			}
-
-			if len(embeddings) != 1 {
-				t.Fatalf("Expected 1 embedding, got %d", len(embeddings))
-			}
-
-			dim := len(embeddings[0])
-			if dim != m.expectedDim {
-				t.Errorf("Model %s: expected dimension %d, got %d", m.name, m.expectedDim, dim)
-			}
-
-			t.Logf("Model %s: dimension = %d", m.name, dim)
-		})
-	}
-}
-
-// TestLLM_ToolCall tests tool call functionality.
-// Skipped if QIANFAN_TOKEN is not set.
-func TestLLM_ToolCall(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+	embeddingModel := getTestEmbeddingModel()
+	if embeddingModel == "" {
+		t.Skip("DOUBAO_EMBEDDING_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithEmbeddingModel(embeddingModel),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	ctx := context.Background()
+	embeddings, err := llm.CreateEmbedding(ctx, []string{"test text for large embedding model"})
+	if err != nil {
+		t.Fatalf("Failed to create embedding: %v", err)
+	}
+
+	if len(embeddings) != 1 {
+		t.Fatalf("Expected 1 embedding, got %d", len(embeddings))
+	}
+
+	dim := len(embeddings[0])
+	t.Logf("Doubao Embedding dimension: %d", dim)
+}
+
+// TestLLM_DifferentModels tests different model types.
+func TestLLM_DifferentModels(t *testing.T) {
+	apiKey := os.Getenv("DOUBAO_API_KEY")
+	if apiKey == "" {
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
+	}
+
+	// Test with the default model from env
+	llm, err := New(
+		WithAPIKey(apiKey),
+		WithModel(model),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	ctx := context.Background()
+	response, err := llm.Call(ctx, "Say hello")
+	if err != nil {
+		t.Logf("Model %s error: %v", model, err)
+		return
+	}
+
+	if response == "" {
+		t.Errorf("Model %s returned empty response", model)
+	}
+
+	t.Logf("Model %s response: %s", model, response)
+}
+
+// TestLLM_Streaming tests streaming response.
+func TestLLM_Streaming(t *testing.T) {
+	apiKey := os.Getenv("DOUBAO_API_KEY")
+	if apiKey == "" {
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
+	}
+
+	llm, err := New(
+		WithAPIKey(apiKey),
+		WithModel(model),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	ctx := context.Background()
+	messages := []llms.MessageContent{
+		{
+			Role: llms.ChatMessageTypeHuman,
+			Parts: []llms.ContentPart{
+				llms.TextPart("Count from 1 to 5"),
+			},
+		},
+	}
+
+	resp, err := llm.GenerateContent(ctx, messages)
+	if err != nil {
+		t.Fatalf("Failed to generate content: %v", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		t.Fatal("No choices in response")
+	}
+
+	t.Logf("Response: %s", resp.Choices[0].Content)
+}
+
+// TestLLM_ToolCall tests tool call functionality.
+// Skipped if DOUBAO_API_KEY or DOUBAO_MODEL is not set.
+func TestLLM_ToolCall(t *testing.T) {
+	apiKey := os.Getenv("DOUBAO_API_KEY")
+	if apiKey == "" {
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
+	}
+
+	llm, err := New(
+		WithAPIKey(apiKey),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -511,16 +558,21 @@ func TestLLM_ToolCall(t *testing.T) {
 }
 
 // TestLLM_ToolChoice tests tool choice option.
-// Skipped if QIANFAN_TOKEN is not set.
+// Skipped if DOUBAO_API_KEY or DOUBAO_MODEL is not set.
 func TestLLM_ToolChoice(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -612,19 +664,21 @@ func TestLLM_ToolChoice(t *testing.T) {
 }
 
 // TestLLM_ToolResponse tests tool response handling.
-// Skipped if QIANFAN_TOKEN is not set.
-//
-// NOTE: Baidu Qianfan API may not support tool role messages directly.
-// The tool responses are typically handled by the OpenAI client wrapper.
+// Skipped if DOUBAO_API_KEY or DOUBAO_MODEL is not set.
 func TestLLM_ToolResponse(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
+	apiKey := os.Getenv("DOUBAO_API_KEY")
 	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
 	}
 
 	llm, err := New(
 		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
+		WithModel(model),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create LLM: %v", err)
@@ -632,12 +686,22 @@ func TestLLM_ToolResponse(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test with a simple user message first
+	// Simulate a conversation with tool call and response
 	messages := []llms.MessageContent{
 		{
 			Role: llms.ChatMessageTypeHuman,
 			Parts: []llms.ContentPart{
-				llms.TextPart("Hello, please respond"),
+				llms.TextPart("What's the weather like in Beijing?"),
+			},
+		},
+		// Simulated tool response
+		{
+			Role: llms.ChatMessageTypeTool,
+			Parts: []llms.ContentPart{
+				llms.ToolCallResponse{
+					ToolCallID: "call_123",
+					Content:    `{"temperature": "22°C", "condition": "Sunny"}`,
+				},
 			},
 		},
 	}
@@ -652,95 +716,97 @@ func TestLLM_ToolResponse(t *testing.T) {
 	}
 
 	content := resp.Choices[0].Content
-	t.Logf("Response: %s", content)
+	t.Logf("Response after tool call: %s", content)
 
 	if content == "" {
-		t.Error("Empty response")
+		t.Error("Empty response after tool call")
 	}
 }
 
-// TestLLM_MultiToolConversation tests a multi-turn conversation with tool calls.
-// Skipped if QIANFAN_TOKEN is not set.
-//
-// NOTE: This test demonstrates the basic tool call flow. The actual tool response
-// handling is done by the OpenAI client wrapper.
-func TestLLM_MultiToolConversation(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
-	}
-
-	llm, err := New(
-		WithAPIKey(apiKey),
-		WithModel(getTestModel()),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create LLM: %v", err)
-	}
-
-	ctx := context.Background()
-
-	// Define tools
-	tools := []llms.Tool{
+// TestLLM_ConvertMessageWithToolResponse tests the convertMessage function with tool response.
+func TestLLM_ConvertMessageWithToolResponse(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      llms.MessageContent
+		wantErr  bool
+		validate func(*testing.T, *model.ChatCompletionMessage)
+	}{
 		{
-			Type: "function",
-			Function: &llms.FunctionDefinition{
-				Name:        "get_weather",
-				Description: "Get the current weather in a given location",
-				Parameters: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"location": map[string]any{
-							"type":        "string",
-							"description": "The city name",
-						},
+			name: "tool response with ToolCallID",
+			msg: llms.MessageContent{
+				Role: llms.ChatMessageTypeTool,
+				Parts: []llms.ContentPart{
+					llms.ToolCallResponse{
+						ToolCallID: "test-call-id",
+						Content:    `{"result": "success"}`,
 					},
-					"required": []string{"location"},
 				},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, m *model.ChatCompletionMessage) {
+				if m.Role != "tool" {
+					t.Errorf("Expected role 'tool', got '%s'", m.Role)
+				}
+				if m.ToolCallID != "test-call-id" {
+					t.Errorf("Expected ToolCallID 'test-call-id', got '%s'", m.ToolCallID)
+				}
+				if m.Content == nil {
+					t.Error("Expected content to be set")
+				}
 			},
 		},
 		{
-			Type: "function",
-			Function: &llms.FunctionDefinition{
-				Name:        "get_time",
-				Description: "Get the current time",
-				Parameters: map[string]any{
-					"type":       "object",
-					"properties": map[string]any{},
+			name: "tool response with text content",
+			msg: llms.MessageContent{
+				Role: llms.ChatMessageTypeTool,
+				Parts: []llms.ContentPart{
+					llms.TextPart("some text content"),
 				},
 			},
+			wantErr: false,
+			validate: func(t *testing.T, m *model.ChatCompletionMessage) {
+				if m.Role != "tool" {
+					t.Errorf("Expected role 'tool', got '%s'", m.Role)
+				}
+				if m.Content == nil {
+					t.Error("Expected content to be set")
+				}
+			},
 		},
-	}
-
-	// First message - user asks for weather
-	messages := []llms.MessageContent{
 		{
-			Role: llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{
-				llms.TextPart("What's the weather in Shanghai?"),
+			name: "user message with text",
+			msg: llms.MessageContent{
+				Role: llms.ChatMessageTypeHuman,
+				Parts: []llms.ContentPart{
+					llms.TextPart("Hello, how are you?"),
+				},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, m *model.ChatCompletionMessage) {
+				if m.Role != string(llms.ChatMessageTypeHuman) {
+					t.Errorf("Expected role '%s', got '%s'", llms.ChatMessageTypeHuman, m.Role)
+				}
+				if m.Content == nil {
+					t.Error("Expected content to be set")
+				}
 			},
 		},
 	}
 
-	resp, err := llm.GenerateContent(ctx, messages, llms.WithTools(tools))
-	if err != nil {
-		t.Fatalf("Failed to generate content: %v", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		t.Fatal("No choices in response")
-	}
-
-	choice := resp.Choices[0]
-	t.Logf("Response - Content: %s", choice.Content)
-	t.Logf("Response - StopReason: %s", choice.StopReason)
-	t.Logf("Response - ToolCalls count: %d", len(choice.ToolCalls))
-
-	// Check if tool calls were returned
-	if len(choice.ToolCalls) > 0 {
-		for i, tc := range choice.ToolCalls {
-			t.Logf("ToolCall[%d]: ID=%s, Function=%s", i, tc.ID, tc.FunctionCall.Name)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, err := convertMessage(tt.msg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertMessage() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.validate != nil {
+				tt.validate(t, msg)
+			}
+		})
 	}
 }
 

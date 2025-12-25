@@ -67,7 +67,7 @@ func TestClientHeaders(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id":"test","object":"chat.completion","created":123456,"choices":[{"index":0,"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`))
+		w.Write([]byte(`{"id":"test","object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3],"index":0}],"model":"embedding-v1","usage":{"prompt_tokens":2,"total_tokens":2}}`))
 	}))
 	defer server.Close()
 
@@ -76,11 +76,9 @@ func TestClientHeaders(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	_, err = client.CreateCompletion(context.Background(), "test-model", &CompletionRequest{
-		Messages: []Message{{Role: "user", Content: "Hello"}},
-	})
+	_, err = client.CreateEmbedding(context.Background(), "test-model", []string{"Hello"})
 	if err != nil {
-		t.Fatalf("Failed to create completion: %v", err)
+		t.Fatalf("Failed to create embedding: %v", err)
 	}
 }
 
@@ -126,145 +124,6 @@ func TestClientCreateEmbedding_RealAPI(t *testing.T) {
 			t.Logf("Embedding %d dimension: %d", i, len(data.Embedding))
 		}
 	})
-}
-
-// TestClientCreateCompletion_RealAPI tests chat completion with real API.
-// Skipped if QIANFAN_TOKEN is not set.
-func TestClientCreateCompletion_RealAPI(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
-	}
-
-	client, err := New(WithAPIKey(apiKey))
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-
-	resp, err := client.CreateCompletion(context.Background(), "ernie-speed-8k", &CompletionRequest{
-		Messages: []Message{
-			{Role: "user", Content: "Hello, how are you?"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Failed to create completion: %v", err)
-	}
-
-	if resp.Result == "" && len(resp.Choices) == 0 {
-		t.Fatal("Empty result and no choices")
-	}
-
-	t.Logf("Result: %s", resp.Result)
-	t.Logf("Usage: %+v", resp.Usage)
-}
-
-// TestClientCreateCompletion_Messages tests message handling.
-func TestClientCreateCompletion_Messages(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
-	}
-
-	client, err := New(WithAPIKey(apiKey))
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-
-	tests := []struct {
-		name     string
-		messages []Message
-	}{
-		{
-			name: "single user message",
-			messages: []Message{
-				{Role: "user", Content: "What is 2+2?"},
-			},
-		},
-		{
-			name: "multi-turn conversation",
-			messages: []Message{
-				{Role: "user", Content: "My name is Bob"},
-				{Role: "assistant", Content: "Hello Bob!"},
-				{Role: "user", Content: "What's my name?"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := client.CreateCompletion(context.Background(), "ernie-speed-8k", &CompletionRequest{
-				Messages: tt.messages,
-			})
-			if err != nil {
-				t.Fatalf("Failed to create completion: %v", err)
-			}
-
-			if resp.Result == "" && len(resp.Choices) == 0 {
-				t.Error("Empty result and no choices")
-			}
-
-			t.Logf("Response: %s", resp.Result)
-		})
-	}
-}
-
-// TestClientCreateCompletion_Temperature tests temperature parameter.
-func TestClientCreateCompletion_Temperature(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
-	}
-
-	client, err := New(WithAPIKey(apiKey))
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-
-	resp, err := client.CreateCompletion(context.Background(), "ernie-speed-8k", &CompletionRequest{
-		Messages: []Message{
-			{Role: "user", Content: "Tell me a joke"},
-		},
-		Temperature: 0.9,
-	})
-	if err != nil {
-		t.Fatalf("Failed to create completion: %v", err)
-	}
-
-	if resp.Result == "" {
-		t.Error("Empty result")
-	}
-
-	t.Logf("Response with temperature 0.9: %s", resp.Result)
-}
-
-// TestClientCreateCompletion_MaxTokens tests max_tokens parameter.
-func TestClientCreateCompletion_MaxTokens(t *testing.T) {
-	apiKey := os.Getenv("QIANFAN_TOKEN")
-	if apiKey == "" {
-		t.Skip("QIANFAN_TOKEN not set")
-	}
-
-	client, err := New(WithAPIKey(apiKey))
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
-
-	resp, err := client.CreateCompletion(context.Background(), "ernie-speed-8k", &CompletionRequest{
-		Messages: []Message{
-			{Role: "user", Content: "Tell me a short story"},
-		},
-		MaxTokens: 50,
-	})
-	if err != nil {
-		t.Fatalf("Failed to create completion: %v", err)
-	}
-
-	if resp.Result == "" {
-		t.Error("Empty result")
-	}
-
-	t.Logf("Response (max 50 tokens): %s", resp.Result)
-	t.Logf("Tokens used: %d", resp.Usage.CompletionTokens)
 }
 
 // TestClient_EmptyInput tests error handling for empty input.

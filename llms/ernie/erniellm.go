@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/tmc/langchaingo/callbacks"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
 
 	"github.com/smallnest/langgraphgo/llms/ernie/client"
 )
@@ -18,8 +18,10 @@ var (
 )
 
 // LLM is a client for Baidu Qianfan (Ernie) LLM.
+// It uses OpenAI-compatible API for chat completions and custom client for embeddings.
 type LLM struct {
-	client           *client.Client
+	chatLLM          *openai.LLM
+	embeddingClient  *client.Client
 	model            ModelName
 	CallbacksHandler callbacks.Handler
 }
@@ -32,17 +34,23 @@ var _ llms.Model = (*LLM)(nil)
 // 1. WithAPIKey(apiKey) - pass API key directly
 // 2. Set ERNIE_API_KEY environment variable
 //
+// Model options:
+// - WithModel(modelName) - set model name (default: ernie-speed-8k)
+//
+// Common models: ernie-4.5-turbo-128k, ernie-speed-128k, ernie-speed-8k, deepseek-r1
+// For the complete model list, visit: https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Nlks5zkzu
+//
 // Example:
 //
 //	llm, err := ernie.New(
 //		ernie.WithAPIKey("your-api-key"),
-//		ernie.WithModel(ernie.ModelNameERNIE4),
+//		ernie.WithModel("ernie-4.5-turbo-128k"),
 //	)
 func New(opts ...Option) (*LLM, error) {
 	options := &options{
 		apiKey:    getEnvOrDefault("ERNIE_API_KEY", ""),
-		modelName: ModelNameERNIESpeed8K, // 默认使用ERNIE Speed 8K
-		baseURL:   "https://qianfan.baidubce.com",
+		modelName: "ernie-speed-8k", // 默认使用 ERNIE Speed 8K
+		baseURL:   "https://qianfan.baidubce.com/v2",
 	}
 
 	for _, opt := range opts {
@@ -57,23 +65,45 @@ export ERNIE_API_KEY={API Key}
 doc: https://cloud.baidu.com/doc/qianfan-api/s/3m9b5lqft`, client.ErrNotSetAuth)
 	}
 
-	clientOpts := []client.Option{
+	// Create OpenAI-compatible chat client
+	chatOpts := []openai.Option{
+		openai.WithToken(options.apiKey),
+		openai.WithBaseURL(options.baseURL),
+	}
+
+	// Apply callback handler if provided
+	if options.callbacksHandler != nil {
+		chatOpts = append(chatOpts, openai.WithCallback(options.callbacksHandler))
+	}
+
+	// Apply custom HTTP client if provided
+	if options.httpClient != nil {
+		chatOpts = append(chatOpts, openai.WithHTTPClient(options.httpClient))
+	}
+
+	chatLLM, err := openai.New(chatOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat client: %w", err)
+	}
+
+	// Create embedding client (uses custom API endpoint)
+	embeddingClientOpts := []client.Option{
 		client.WithAPIKey(options.apiKey),
 		client.WithBaseURL(options.baseURL),
 	}
-
 	if options.httpClient != nil {
-		clientOpts = append(clientOpts, client.WithHTTPClient(options.httpClient))
+		embeddingClientOpts = append(embeddingClientOpts, client.WithHTTPClient(options.httpClient))
 	}
 
-	c, err := client.New(clientOpts...)
+	embeddingClient, err := client.New(embeddingClientOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create embedding client: %w", err)
 	}
 
 	return &LLM{
-		client:           c,
-		model:            options.modelName,
+		chatLLM:         chatLLM,
+		embeddingClient: embeddingClient,
+		model:           options.modelName,
 		CallbacksHandler: options.callbacksHandler,
 	}, nil
 }
@@ -84,102 +114,27 @@ func (o *LLM) Call(ctx context.Context, prompt string, options ...llms.CallOptio
 }
 
 // GenerateContent implements the Model interface.
+// Uses OpenAI-compatible API for chat completions.
 func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	if o.CallbacksHandler != nil {
-		o.CallbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
-	}
-
-	opts := &llms.CallOptions{}
+	// Parse call options to check if temperature is set
+	callOpts := llms.CallOptions{}
 	for _, opt := range options {
-		opt(opts)
+		opt(&callOpts)
 	}
 
-	// Convert messages to Ernie format
-	ernieMessages := make([]client.Message, 0, len(messages))
-	for _, msg := range messages {
-		role := string(msg.Role)
-		// Map ChatMessageType to Ernie role format
-		switch role {
-		case "":
-			role = "user"
-		case "human":
-			role = "user"
-		case "ai":
-			role = "assistant"
-		case "system":
-			role = "system"
-		}
-
-		var content strings.Builder
-		for _, part := range msg.Parts {
-			if text, ok := part.(llms.TextContent); ok {
-				content.WriteString(text.Text)
-			}
-		}
-
-		ernieMessages = append(ernieMessages, client.Message{
-			Role:    role,
-			Content: content.String(),
-		})
+	// Prepend model option and default temperature if not set
+	opts := make([]llms.CallOption, 0, len(options)+2)
+	if o.model != "" {
+		opts = append(opts, llms.WithModel(string(o.model)))
 	}
-
-	result, err := o.client.CreateCompletion(ctx, o.getModelString(*opts), &client.CompletionRequest{
-		Messages:      ernieMessages,
-		Temperature:   opts.Temperature,
-		TopP:          opts.TopP,
-		PenaltyScore:  opts.RepetitionPenalty,
-		StreamingFunc: opts.StreamingFunc,
-		Stream:        opts.StreamingFunc != nil,
-		MaxTokens:     int(opts.MaxTokens),
-	})
-	if err != nil {
-		if o.CallbacksHandler != nil {
-			o.CallbacksHandler.HandleLLMError(ctx, err)
-		}
-		return nil, err
+	// Baidu Qianfan API requires temperature in (0, 1.0] range
+	// Set default temperature to 0.1 if not specified
+	if callOpts.Temperature == 0 {
+		opts = append(opts, llms.WithTemperature(0.1))
 	}
+	opts = append(opts, options...)
 
-	if result.ErrorCode > 0 {
-		err = fmt.Errorf("%w, error_code:%v, error_msg:%v, id:%v",
-			ErrCodeResponse, result.ErrorCode, result.ErrorMsg, result.ID)
-		if o.CallbacksHandler != nil {
-			o.CallbacksHandler.HandleLLMError(ctx, err)
-		}
-		return nil, err
-	}
-
-	resp := &llms.ContentResponse{
-		Choices: []*llms.ContentChoice{
-			{
-				Content:    result.Result,
-				StopReason: "", // Will be set if available
-			},
-		},
-	}
-
-	// Set StopReason from Choices if available
-	if len(result.Choices) > 0 && result.Choices[0].FinishReason != "" {
-		resp.Choices[0].StopReason = result.Choices[0].FinishReason
-	} else if result.Result == "" {
-		resp.Choices[0].StopReason = "stop"
-	}
-
-	// Add usage information to GenerationInfo
-	if result.Usage.TotalTokens > 0 {
-		resp.Choices[0].GenerationInfo = map[string]any{
-			"prompt_tokens":     result.Usage.PromptTokens,
-			"completion_tokens": result.Usage.CompletionTokens,
-			"total_tokens":      result.Usage.TotalTokens,
-		}
-	} else {
-		resp.Choices[0].GenerationInfo = make(map[string]any)
-	}
-
-	if o.CallbacksHandler != nil {
-		o.CallbacksHandler.HandleLLMGenerateContentEnd(ctx, resp)
-	}
-
-	return resp, nil
+	return o.chatLLM.GenerateContent(ctx, messages, opts...)
 }
 
 // CreateEmbedding generates embeddings for the given texts using Ernie embedding models.
@@ -196,7 +151,7 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 //
 // API documentation: https://cloud.baidu.com/doc/qianfan-api/s/Fm7u3ropn
 func (o *LLM) CreateEmbedding(ctx context.Context, texts []string) ([][]float32, error) {
-	resp, err := o.client.CreateEmbedding(ctx, o.getModelString(llms.CallOptions{}), texts)
+	resp, err := o.embeddingClient.CreateEmbedding(ctx, o.getModelString(llms.CallOptions{}), texts)
 	if err != nil {
 		return nil, err
 	}
