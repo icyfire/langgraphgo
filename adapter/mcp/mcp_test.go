@@ -176,7 +176,7 @@ func TestMCPTool_Call_InvalidJSON(t *testing.T) {
 	ctx := context.Background()
 	_, err := tool.Call(ctx, "{invalid json}")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to unmarshal")
+	assert.Contains(t, err.Error(), "failed to call MCP tool")
 }
 
 // TestMCPTool_Call_ClientError 测试客户端错误
