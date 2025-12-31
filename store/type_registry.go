@@ -20,10 +20,10 @@ type TypeRegistry struct {
 
 // globalTypeRegistry is the singleton instance of TypeRegistry
 var globalTypeRegistry = &TypeRegistry{
-	typeNameToType:     make(map[string]reflect.Type),
-	typeToName:         make(map[reflect.Type]string),
-	typeCreators:       make(map[string]func() any),
-	jsonMarshallers:    make(map[reflect.Type]func(any) ([]byte, error)),
+	typeNameToType:    make(map[string]reflect.Type),
+	typeToName:        make(map[reflect.Type]string),
+	typeCreators:      make(map[string]func() any),
+	jsonMarshallers:   make(map[reflect.Type]func(any) ([]byte, error)),
 	jsonUnmarshallers: make(map[reflect.Type]func([]byte, any) (any, error)),
 }
 
@@ -157,8 +157,8 @@ func (r *TypeRegistry) CreateInstance(typeName string) (any, error) {
 	return instance, nil
 }
 
-// MarshalJSON marshals a value to JSON with type information.
-func (r *TypeRegistry) MarshalJSON(value any) ([]byte, error) {
+// Marshal marshals a value to JSON with type information.
+func (r *TypeRegistry) Marshal(value any) ([]byte, error) {
 	if value == nil {
 		return json.Marshal(nil)
 	}
@@ -191,15 +191,15 @@ func (r *TypeRegistry) MarshalJSON(value any) ([]byte, error) {
 
 	// Wrap with type information
 	wrapped := map[string]any{
-		"_type": typeName,
+		"_type":  typeName,
 		"_value": json.RawMessage(jsonData),
 	}
 
 	return json.Marshal(wrapped)
 }
 
-// UnmarshalJSON unmarshals JSON with type information.
-func (r *TypeRegistry) UnmarshalJSON(data []byte) (any, error) {
+// Unmarshal unmarshals JSON with type information.
+func (r *TypeRegistry) Unmarshal(data []byte) (any, error) {
 	// First, try to unmarshal as wrapped type
 	var wrapped map[string]json.RawMessage
 	if err := json.Unmarshal(data, &wrapped); err != nil {
@@ -273,14 +273,14 @@ type UnmarshalFunc func([]byte) (any, error)
 // StateMarshaler creates a marshal function for the given registry
 func (r *TypeRegistry) StateMarshaler() MarshalFunc {
 	return func(state any) ([]byte, error) {
-		return r.MarshalJSON(state)
+		return r.Marshal(state)
 	}
 }
 
 // StateUnmarshaler creates an unmarshal function for the given registry
 func (r *TypeRegistry) StateUnmarshaler() UnmarshalFunc {
 	return func(data []byte) (any, error) {
-		return r.UnmarshalJSON(data)
+		return r.Unmarshal(data)
 	}
 }
 

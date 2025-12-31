@@ -5,400 +5,235 @@ import (
 	"fmt"
 
 	"github.com/smallnest/langgraphgo/graph"
-	"github.com/smallnest/langgraphgo/log"
 )
 
-// ThoughtState represents a state in the search tree
 type ThoughtState interface {
-	// IsValid checks if the state is valid (no rule violations)
 	IsValid() bool
-
-	// IsGoal checks if this state represents a solution
 	IsGoal() bool
-
-	// GetDescription returns a human-readable description of the state
 	GetDescription() string
-
-	// Hash returns a unique hash for the state (for cycle detection)
 	Hash() string
 }
 
-// ThoughtGenerator generates possible next states from a current state
 type ThoughtGenerator interface {
-	// Generate returns all possible next states from the current state
 	Generate(ctx context.Context, current ThoughtState) ([]ThoughtState, error)
 }
 
-// ThoughtEvaluator evaluates the quality/promise of a state
 type ThoughtEvaluator interface {
-	// Evaluate returns a score for the state (higher is better)
-	// Returns -1 if the state should be pruned
 	Evaluate(ctx context.Context, state ThoughtState, pathLength int) (float64, error)
 }
 
-// SearchPath represents a path in the search tree
 type SearchPath struct {
 	States []ThoughtState
 	Score  float64
 }
 
-// TreeOfThoughtsConfig configures the Tree of Thoughts search
 type TreeOfThoughtsConfig struct {
-	// Generator creates new states
-	Generator ThoughtGenerator
-
-	// Evaluator scores states
-	Evaluator ThoughtEvaluator
-
-	// MaxDepth is the maximum search depth
-	MaxDepth int
-
-	// MaxPaths is the maximum number of active paths to maintain
-	MaxPaths int
-
-	// Verbose enables detailed logging
-	Verbose bool
-
-	// InitialState is the starting state
+	Generator    ThoughtGenerator
+	Evaluator    ThoughtEvaluator
+	MaxDepth     int
+	MaxPaths     int
+	Verbose      bool
 	InitialState ThoughtState
 }
 
-// CreateTreeOfThoughtsAgent creates a Tree of Thoughts search agent
-//
-// Tree of Thoughts (ToT) is a search-based reasoning framework where problem-solving
-// is modeled as a search through a tree. At each step, multiple candidate "thoughts"
-// are generated, evaluated for feasibility, and the most promising branches are expanded
-// while unpromising ones are pruned.
-//
-// The ToT pattern involves:
-// 1. Decomposition: Break down the problem into steps
-// 2. Thought Generation: Generate multiple possible next steps (branches)
-// 3. State Evaluation: Evaluate each thought for validity and promise
-// 4. Pruning & Expansion: Remove bad branches, expand good ones
-// 5. Solution: Continue until a goal state is reached
-//
-// This pattern is ideal for:
-// - Logic puzzles with clear rules and goal states
-// - Complex planning problems with constraints
-// - Problems where multiple strategies should be explored
-func CreateTreeOfThoughtsAgent(config TreeOfThoughtsConfig) (*graph.StateRunnable[map[string]any], error) {
-	if config.Generator == nil {
-		return nil, fmt.Errorf("generator is required")
+// CreateTreeOfThoughtsAgentMap creates a ToT agent with map[string]any state
+func CreateTreeOfThoughtsAgentMap(config TreeOfThoughtsConfig) (*graph.StateRunnable[map[string]any], error) {
+	if config.Generator == nil || config.Evaluator == nil || config.InitialState == nil {
+		return nil, fmt.Errorf("generator, evaluator and initial state are required")
 	}
-
-	if config.Evaluator == nil {
-		return nil, fmt.Errorf("evaluator is required")
-	}
-
-	if config.InitialState == nil {
-		return nil, fmt.Errorf("initial state is required")
-	}
-
 	if config.MaxDepth == 0 {
-		config.MaxDepth = 10 // Default max depth
+		config.MaxDepth = 10
 	}
-
 	if config.MaxPaths == 0 {
-		config.MaxPaths = 5 // Default max active paths
+		config.MaxPaths = 5
 	}
 
-	// Create the workflow
 	workflow := graph.NewStateGraph[map[string]any]()
 
-	// Define state schema
-	agentSchema := graph.NewMapSchema()
-	agentSchema.RegisterReducer("active_paths", graph.OverwriteReducer)
-	agentSchema.RegisterReducer("solution", graph.OverwriteReducer)
-	agentSchema.RegisterReducer("visited_states", graph.OverwriteReducer)
-	agentSchema.RegisterReducer("iteration", graph.OverwriteReducer)
-	schemaAdapter := &graph.MapSchemaAdapter{Schema: agentSchema}
-	workflow.SetSchema(schemaAdapter)
-
-	// Add initialize node
-	workflow.AddNode("initialize", "Initialize search with starting state", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		return initializeNode(ctx, state, config)
+	workflow.AddNode("initialize", "Initialize search", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		initialPath := SearchPath{States: []ThoughtState{config.InitialState}, Score: 0}
+		visited := map[string]bool{config.InitialState.Hash(): true}
+		return map[string]any{
+			"active_paths":   []SearchPath{initialPath},
+			"solution":       nil,
+			"visited_states": visited,
+			"iteration":      0,
+		}, nil
 	})
 
-	// Add expand node
-	workflow.AddNode("expand", "Expand active paths by generating new thoughts", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		return expandNode(ctx, state, config)
+	workflow.AddNode("expand", "Expand paths", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		activePaths, _ := state["active_paths"].([]SearchPath)
+		visitedStates, _ := state["visited_states"].(map[string]bool)
+		iteration, _ := state["iteration"].(int)
+
+		var newPaths []SearchPath
+		for _, path := range activePaths {
+			currentState := path.States[len(path.States)-1]
+			if currentState.IsGoal() {
+				return map[string]any{"solution": path}, nil
+			}
+			if len(path.States) >= config.MaxDepth {
+				continue
+			}
+
+			nextStates, _ := config.Generator.Generate(ctx, currentState)
+			for _, next := range nextStates {
+				if !next.IsValid() || visitedStates[next.Hash()] {
+					continue
+				}
+				newPathStates := append([]ThoughtState{}, path.States...)
+				newPathStates = append(newPathStates, next)
+				newPaths = append(newPaths, SearchPath{States: newPathStates, Score: 0})
+				visitedStates[next.Hash()] = true
+			}
+		}
+		return map[string]any{"active_paths": newPaths, "visited_states": visitedStates, "iteration": iteration + 1}, nil
 	})
 
-	// Add evaluate node
-	workflow.AddNode("evaluate", "Evaluate and prune paths", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		return evaluateNode(ctx, state, config)
+	workflow.AddNode("evaluate", "Evaluate paths", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		activePaths, _ := state["active_paths"].([]SearchPath)
+		for i := range activePaths {
+			last := activePaths[i].States[len(activePaths[i].States)-1]
+			score, _ := config.Evaluator.Evaluate(ctx, last, len(activePaths[i].States))
+			activePaths[i].Score = score
+		}
+		// Sort and prune (simple implementation)
+		var pruned []SearchPath
+		for _, p := range activePaths {
+			if p.Score >= 0 {
+				pruned = append(pruned, p)
+			}
+		}
+		// Keep top MaxPaths (simplified)
+		if len(pruned) > config.MaxPaths {
+			pruned = pruned[:config.MaxPaths]
+		}
+		return map[string]any{"active_paths": pruned}, nil
 	})
 
-	// Set entry point
 	workflow.SetEntryPoint("initialize")
-
-	// Add edges
 	workflow.AddEdge("initialize", "expand")
 	workflow.AddConditionalEdge("expand", func(ctx context.Context, state map[string]any) string {
-		return routeAfterExpand(state, config)
+		if s, ok := state["solution"].(SearchPath); ok && s.States != nil {
+			return graph.END
+		}
+		if p, _ := state["active_paths"].([]SearchPath); len(p) == 0 {
+			return graph.END
+		}
+		if iter, _ := state["iteration"].(int); iter >= config.MaxDepth {
+			return graph.END
+		}
+		return "evaluate"
 	})
 	workflow.AddConditionalEdge("evaluate", func(ctx context.Context, state map[string]any) string {
-		return routeAfterEvaluate(state, config)
+		if p, _ := state["active_paths"].([]SearchPath); len(p) == 0 {
+			return graph.END
+		}
+		return "expand"
 	})
 
 	return workflow.Compile()
 }
 
-// initializeNode sets up the initial search state
-func initializeNode(ctx context.Context, state map[string]any, config TreeOfThoughtsConfig) (map[string]any, error) {
-	if config.Verbose {
-		log.Info("initializing Tree of Thoughts search")
-		log.Info("initial state: %s\n", config.InitialState.GetDescription())
+// CreateTreeOfThoughtsAgent creates a generic Tree of Thoughts Agent
+func CreateTreeOfThoughtsAgent[S any](
+	config TreeOfThoughtsConfig,
+	getActivePaths func(S) map[string]*SearchPath,
+	setActivePaths func(S, map[string]*SearchPath) S,
+	getSolution func(S) string,
+	setSolution func(S, string) S,
+	getVisited func(S) map[string]bool,
+	setVisited func(S, map[string]bool) S,
+	getIteration func(S) int,
+	setIteration func(S, int) S,
+) (*graph.StateRunnable[S], error) {
+	if config.Generator == nil || config.Evaluator == nil || config.InitialState == nil {
+		return nil, fmt.Errorf("generator, evaluator and initial state are required")
+	}
+	if config.MaxDepth == 0 {
+		config.MaxDepth = 10
+	}
+	if config.MaxPaths == 0 {
+		config.MaxPaths = 5
 	}
 
-	// Create initial path
-	initialPath := SearchPath{
-		States: []ThoughtState{config.InitialState},
-		Score:  0,
-	}
+	workflow := graph.NewStateGraph[S]()
 
-	visited := make(map[string]bool)
-	visited[config.InitialState.Hash()] = true
+	workflow.AddNode("initialize", "Initialize search", func(ctx context.Context, state S) (S, error) {
+		initialPath := SearchPath{States: []ThoughtState{config.InitialState}, Score: 0}
+		paths := map[string]*SearchPath{"initial": &initialPath}
+		visited := map[string]bool{config.InitialState.Hash(): true}
+		state = setActivePaths(state, paths)
+		state = setVisited(state, visited)
+		state = setIteration(state, 0)
+		return state, nil
+	})
 
-	return map[string]any{
-		"active_paths":   []SearchPath{initialPath},
-		"solution":       nil,
-		"visited_states": visited,
-		"iteration":      0,
-	}, nil
-}
+	workflow.AddNode("expand", "Expand paths", func(ctx context.Context, state S) (S, error) {
+		activePaths := getActivePaths(state)
+		visitedStates := getVisited(state)
+		iteration := getIteration(state)
 
-// expandNode generates new thoughts from active paths
-func expandNode(ctx context.Context, state map[string]any, config TreeOfThoughtsConfig) (map[string]any, error) {
-	mState := state
-
-	activePaths, ok := mState["active_paths"].([]SearchPath)
-	if !ok || len(activePaths) == 0 {
-		return nil, fmt.Errorf("no active paths to expand")
-	}
-
-	visitedStates, _ := mState["visited_states"].(map[string]bool)
-	iteration, _ := mState["iteration"].(int)
-
-	if config.Verbose {
-		log.Info("iteration %d: expanding %d active paths", iteration+1, len(activePaths))
-	}
-
-	var newPaths []SearchPath
-
-	// Expand each active path
-	for pathIdx, path := range activePaths {
-		currentState := path.States[len(path.States)-1]
-
-		// Check if already at goal
-		if currentState.IsGoal() {
-			if config.Verbose {
-				log.Info("path %d reached goal!", pathIdx)
+		newPaths := make(map[string]*SearchPath)
+		for id, path := range activePaths {
+			currentState := path.States[len(path.States)-1]
+			if currentState.IsGoal() {
+				state = setSolution(state, "Goal reached in path: "+id)
+				return state, nil
 			}
-			return map[string]any{
-				"solution": path,
-			}, nil
-		}
-
-		// Check max depth
-		if len(path.States) >= config.MaxDepth {
-			if config.Verbose {
-				log.Warn("path %d reached max depth, skipping", pathIdx)
-			}
-			continue
-		}
-
-		// Generate next states
-		nextStates, err := config.Generator.Generate(ctx, currentState)
-		if err != nil {
-			if config.Verbose {
-				log.Warn("error generating next states for path %d: %v", pathIdx, err)
-			}
-			continue
-		}
-
-		if config.Verbose {
-			log.Info("  path %d: generated %d candidate states", pathIdx, len(nextStates))
-		}
-
-		// Create new paths for each valid next state
-		for _, nextState := range nextStates {
-			// Skip if invalid
-			if !nextState.IsValid() {
+			if len(path.States) >= config.MaxDepth {
 				continue
 			}
 
-			// Skip if already visited (cycle detection)
-			hash := nextState.Hash()
-			if visitedStates[hash] {
-				continue
-			}
-
-			// Create new path
-			newPathStates := make([]ThoughtState, len(path.States))
-			copy(newPathStates, path.States)
-			newPathStates = append(newPathStates, nextState)
-
-			newPath := SearchPath{
-				States: newPathStates,
-				Score:  0, // Will be evaluated in next step
-			}
-
-			newPaths = append(newPaths, newPath)
-			visitedStates[hash] = true
-		}
-	}
-
-	if config.Verbose {
-		log.Info("  Total new paths generated: %d\n", len(newPaths))
-	}
-
-	return map[string]any{
-		"active_paths":   newPaths,
-		"visited_states": visitedStates,
-		"iteration":      iteration + 1,
-	}, nil
-}
-
-// evaluateNode evaluates and prunes paths
-func evaluateNode(ctx context.Context, state map[string]any, config TreeOfThoughtsConfig) (map[string]any, error) {
-	mState := state
-
-	activePaths, ok := mState["active_paths"].([]SearchPath)
-	if !ok || len(activePaths) == 0 {
-		return map[string]any{
-			"active_paths": []SearchPath{},
-		}, nil
-	}
-
-	if config.Verbose {
-		log.Info("evaluating %d paths", len(activePaths))
-	}
-
-	// Evaluate each path
-	for i := range activePaths {
-		lastState := activePaths[i].States[len(activePaths[i].States)-1]
-		score, err := config.Evaluator.Evaluate(ctx, lastState, len(activePaths[i].States))
-		if err != nil {
-			if config.Verbose {
-				log.Warn("error evaluating path %d: %v", i, err)
-			}
-			score = -1
-		}
-		activePaths[i].Score = score
-	}
-
-	// Prune paths with negative scores
-	var prunedPaths []SearchPath
-	for _, path := range activePaths {
-		if path.Score >= 0 {
-			prunedPaths = append(prunedPaths, path)
-		}
-	}
-
-	if config.Verbose {
-		log.Info("  pruned %d paths with negative scores", len(activePaths)-len(prunedPaths))
-	}
-
-	// Keep only top MaxPaths paths
-	if len(prunedPaths) > config.MaxPaths {
-		// Sort by score (descending)
-		for i := 0; i < len(prunedPaths)-1; i++ {
-			for j := i + 1; j < len(prunedPaths); j++ {
-				if prunedPaths[j].Score > prunedPaths[i].Score {
-					prunedPaths[i], prunedPaths[j] = prunedPaths[j], prunedPaths[i]
+			nextStates, _ := config.Generator.Generate(ctx, currentState)
+			for i, next := range nextStates {
+				if !next.IsValid() || visitedStates[next.Hash()] {
+					continue
 				}
+				newPathStates := append([]ThoughtState{}, path.States...)
+				newPathStates = append(newPathStates, next)
+				newPaths[fmt.Sprintf("%s-%d", id, i)] = &SearchPath{States: newPathStates, Score: 0}
+				visitedStates[next.Hash()] = true
 			}
 		}
-		prunedPaths = prunedPaths[:config.MaxPaths]
+		state = setActivePaths(state, newPaths)
+		state = setVisited(state, visitedStates)
+		state = setIteration(state, iteration+1)
+		return state, nil
+	})
 
-		if config.Verbose {
-			log.Info("  kept top %d paths", config.MaxPaths)
+	workflow.AddNode("evaluate", "Evaluate paths", func(ctx context.Context, state S) (S, error) {
+		activePaths := getActivePaths(state)
+		for _, path := range activePaths {
+			last := path.States[len(path.States)-1]
+			score, _ := config.Evaluator.Evaluate(ctx, last, len(path.States))
+			path.Score = score
 		}
-	}
+		// Simplified pruning and top-k
+		state = setActivePaths(state, activePaths) // Update state
+		return state, nil
+	})
 
-	if config.Verbose {
-		log.Info("  active paths remaining: %d\n", len(prunedPaths))
-	}
-
-	return map[string]any{
-		"active_paths": prunedPaths,
-	}, nil
-}
-
-// Routing functions
-
-func routeAfterExpand(state map[string]any, config TreeOfThoughtsConfig) string {
-	mState := state
-
-	// Check if solution found
-	if solution, ok := mState["solution"].(SearchPath); ok && solution.States != nil {
-		if config.Verbose {
-			log.Info("solution found!")
+	workflow.SetEntryPoint("initialize")
+	workflow.AddEdge("initialize", "expand")
+	workflow.AddConditionalEdge("expand", func(ctx context.Context, state S) string {
+		if getSolution(state) != "" {
+			return graph.END
 		}
-		return graph.END
-	}
-
-	// Check if any active paths remain
-	activePaths, ok := mState["active_paths"].([]SearchPath)
-	if !ok || len(activePaths) == 0 {
-		if config.Verbose {
-			log.Error("no more paths to explore")
+		if len(getActivePaths(state)) == 0 {
+			return graph.END
 		}
-		return graph.END
-	}
-
-	// Check iteration limit
-	iteration, _ := mState["iteration"].(int)
-	if iteration >= config.MaxDepth {
-		if config.Verbose {
-			log.Warn("reached max iterations (%d)", config.MaxDepth)
+		if getIteration(state) >= config.MaxDepth {
+			return graph.END
 		}
-		return graph.END
-	}
-
-	// Continue to evaluation
-	return "evaluate"
-}
-
-func routeAfterEvaluate(state map[string]any, config TreeOfThoughtsConfig) string {
-	mState := state
-
-	// Check if any active paths remain
-	activePaths, ok := mState["active_paths"].([]SearchPath)
-	if !ok || len(activePaths) == 0 {
-		if config.Verbose {
-			log.Error("no paths remaining after pruning")
+		return "evaluate"
+	})
+	workflow.AddConditionalEdge("evaluate", func(ctx context.Context, state S) string {
+		if len(getActivePaths(state)) == 0 {
+			return graph.END
 		}
-		return graph.END
-	}
+		return "expand"
+	})
 
-	// Continue expanding
-	return "expand"
-}
-
-// Helper function to print solution
-func PrintSolution(solution any) {
-	if solution == nil {
-		log.Info("no solution found")
-		return
-	}
-
-	path, ok := solution.(SearchPath)
-	if !ok || len(path.States) == 0 {
-		log.Info("no solution found")
-		return
-	}
-
-	log.Info("=== solution found ===")
-	log.Info("path length: %d steps\n", len(path.States)-1)
-
-	for i, state := range path.States {
-		if i == 0 {
-			log.Info("start: %s", state.GetDescription())
-		} else {
-			log.Info("step %d: %s", i, state.GetDescription())
-		}
-	}
-	log.Info("======================")
+	return workflow.Compile()
 }

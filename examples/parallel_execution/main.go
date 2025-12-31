@@ -3,72 +3,60 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
 )
 
 func main() {
-	// Create a new state graph
-	g := graph.NewStateGraph()
+	// Create a new state graph with typed state
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Define Schema
-	// We use a map schema where "results" is a list that accumulates values
+	// Using map schema where "results" accumulates values
 	schema := graph.NewMapSchema()
 	schema.RegisterReducer("results", graph.AppendReducer)
 	g.SetSchema(schema)
 
 	// Define Nodes
-	g.AddNode("start", "start", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("[Start] Starting execution...")
-		return map[string]any{
-			"status": "started",
-		}, nil
+	g.AddNode("start", "start", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		fmt.Println("Starting execution...")
+		return map[string]any{}, nil
 	})
 
-	g.AddNode("branch_a", "branch_a", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("  [Branch A] Working...")
+	g.AddNode("branch_a", "branch_a", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		time.Sleep(100 * time.Millisecond)
-		return map[string]any{
-			"results": []string{"Result from A"},
-		}, nil
+		fmt.Println("Branch A executed")
+		return map[string]any{"results": "A"}, nil
 	})
 
-	g.AddNode("branch_b", "branch_b", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("  [Branch B] Working...")
+	g.AddNode("branch_b", "branch_b", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		time.Sleep(200 * time.Millisecond)
-		return map[string]any{
-			"results": []string{"Result from B"},
-		}, nil
+		fmt.Println("Branch B executed")
+		return map[string]any{"results": "B"}, nil
 	})
 
-	g.AddNode("branch_c", "branch_c", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("  [Branch C] Working...")
+	g.AddNode("branch_c", "branch_c", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		time.Sleep(150 * time.Millisecond)
-		return map[string]any{
-			"results": []string{"Result from C"},
-		}, nil
+		fmt.Println("Branch C executed")
+		return map[string]any{"results": "C"}, nil
 	})
 
-	g.AddNode("aggregator", "aggregator", func(ctx context.Context, state any) (any, error) {
-		mState := state.(map[string]any)
-		results := mState["results"].([]string)
-		fmt.Printf("[Aggregator] Collected %d results: %v\n", len(results), results)
-		return map[string]any{
-			"status": "finished",
-		}, nil
+	g.AddNode("aggregator", "aggregator", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		results := state["results"]
+		fmt.Printf("Aggregated results: %v\n", results)
+		return map[string]any{"final": "done"}, nil
 	})
 
-	// Define Edges
+	// Define Graph Structure
 	g.SetEntryPoint("start")
 
-	// Fan-out: Start -> A, B, C
+	// Fan-out from start to branches
 	g.AddEdge("start", "branch_a")
 	g.AddEdge("start", "branch_b")
 	g.AddEdge("start", "branch_c")
 
-	// Fan-in: A, B, C -> Aggregator
+	// Fan-in from branches to aggregator
 	g.AddEdge("branch_a", "aggregator")
 	g.AddEdge("branch_b", "aggregator")
 	g.AddEdge("branch_c", "aggregator")
@@ -78,7 +66,7 @@ func main() {
 	// Compile
 	runnable, err := g.Compile()
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	// Execute
@@ -86,11 +74,10 @@ func main() {
 		"results": []string{},
 	}
 
-	fmt.Println("=== Parallel Execution Example ===")
 	res, err := runnable.Invoke(context.Background(), initialState)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	fmt.Printf("Final State: %v\n", res)
+	fmt.Printf("Final state: %v\n", res)
 }

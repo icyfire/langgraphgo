@@ -70,8 +70,8 @@ func CreateDeepAgent(model llms.Model, opts ...Option) (*graph.StateRunnable[map
 		&tools.TaskTool{Handler: options.SubAgentHandler},
 	}
 
-	// Create agent
-	agent, err := prebuilt.CreateAgent(model, agentTools,
+	// Create agent using map state convenience function
+	agent, err := prebuilt.CreateAgentMap(model, agentTools,
 		prebuilt.WithSystemMessage(options.SystemPrompt),
 	)
 	if err != nil {

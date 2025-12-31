@@ -10,33 +10,24 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
-// CreateSupervisor creates a supervisor graph that orchestrates multiple agents
-func CreateSupervisor(model llms.Model, members map[string]*graph.StateRunnable[map[string]any]) (*graph.StateRunnable[map[string]any], error) {
+// CreateSupervisorMap creates a supervisor graph with map[string]any state
+func CreateSupervisorMap(model llms.Model, members map[string]*graph.StateRunnable[map[string]any]) (*graph.StateRunnable[map[string]any], error) {
 	workflow := graph.NewStateGraph[map[string]any]()
-
-	// Define state schema
-	// We use MapSchema with AppendReducer for messages
 	schema := graph.NewMapSchema()
 	schema.RegisterReducer("messages", graph.AppendReducer)
-	schemaAdapter := &graph.MapSchemaAdapter{Schema: schema}
-	workflow.SetSchema(schemaAdapter)
+	workflow.SetSchema(schema)
 
-	// Get member names
 	var memberNames []string
 	for name := range members {
 		memberNames = append(memberNames, name)
 	}
 
-	// Define supervisor node
 	workflow.AddNode("supervisor", "Supervisor orchestration node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		mState := state
-
-		messages, ok := mState["messages"].([]llms.MessageContent)
+		messages, ok := state["messages"].([]llms.MessageContent)
 		if !ok {
 			return nil, fmt.Errorf("messages key not found or invalid type")
 		}
 
-		// Define routing function
 		options := append(memberNames, "FINISH")
 		routeTool := llms.Tool{
 			Type: "function",
@@ -56,98 +47,140 @@ func CreateSupervisor(model llms.Model, members map[string]*graph.StateRunnable[
 			},
 		}
 
-		// System prompt
 		systemPrompt := fmt.Sprintf(
-			"You are a supervisor tasked with managing a conversation between the following workers: %s. Given the following user request, respond with the worker to act next. Each worker will perform a task and respond with their results and status. When finished, respond with FINISH. You MUST use the 'route' tool to select the next worker or to finish. Do not provide any other text response.",
+			"You are a supervisor tasked with managing a conversation between: %s. Respond with the worker to act next or FINISH. Use the 'route' tool.",
 			strings.Join(memberNames, ", "),
 		)
 
-		// Prepare messages
-		inputMessages := []llms.MessageContent{
-			llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
-		}
-		inputMessages = append(inputMessages, messages...)
+		inputMessages := append([]llms.MessageContent{llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt)}, messages...)
 
-		// Call model - force tool choice to ensure the model uses the route tool
-		toolChoice := llms.ToolChoice{
-			Type: "function",
-			Function: &llms.FunctionReference{
-				Name: "route",
-			},
-		}
-		resp, err := model.GenerateContent(ctx, inputMessages,
-			llms.WithTools([]llms.Tool{routeTool}),
-			llms.WithToolChoice(toolChoice),
-		)
+		toolChoice := llms.ToolChoice{Type: "function", Function: &llms.FunctionReference{Name: "route"}}
+		resp, err := model.GenerateContent(ctx, inputMessages, llms.WithTools([]llms.Tool{routeTool}), llms.WithToolChoice(toolChoice))
 		if err != nil {
 			return nil, err
 		}
 
 		choice := resp.Choices[0]
 		if len(choice.ToolCalls) == 0 {
-			// If no tool call, assume FINISH or error?
-			// With ToolChoice("route"), it should call it.\
 			return nil, fmt.Errorf("supervisor did not select a next step")
 		}
 
-		// Parse selection
-		tc := choice.ToolCalls[0]
 		var args struct {
 			Next string `json:"next"`
 		}
-		if err := json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args); err != nil {
+		if err := json.Unmarshal([]byte(choice.ToolCalls[0].FunctionCall.Arguments), &args); err != nil {
 			return nil, fmt.Errorf("failed to parse route arguments: %w", err)
 		}
 
-		// We return the decision in a special key "next"
-		// We don't append to messages here, or maybe we do?
-		// Usually supervisor output is not part of conversation history unless we want to track decisions.
-		// For now, let's just return "next" in state for conditional edge.
-		return map[string]any{
-			"next": args.Next,
-		}, nil
+		return map[string]any{"next": args.Next}, nil
 	})
 
-	// Add member nodes
 	for name, agent := range members {
-		// We need to wrap the agent runnable to adapt state if needed
-		// But assuming they share the same state schema (messages)
-		// We can just call agent.Invoke
 		agentName := name
 		agentRunnable := agent
-
 		workflow.AddNode(agentName, "Agent: "+agentName, func(ctx context.Context, state map[string]any) (map[string]any, error) {
-			// Invoke agent
-			// We pass the full state
-			res, err := agentRunnable.Invoke(ctx, state)
-			if err != nil {
-				return nil, err
-			}
-
-			// Result should be a map with messages
-			// We return it to be merged
-			return res, nil
+			return agentRunnable.Invoke(ctx, state)
 		})
 	}
 
-	// Define edges
 	workflow.SetEntryPoint("supervisor")
-
-	// Conditional edge from supervisor
 	workflow.AddConditionalEdge("supervisor", func(ctx context.Context, state map[string]any) string {
-		mState := state
-		next, ok := mState["next"].(string)
-		if !ok {
-			return graph.END
-		}
-		if next == "FINISH" {
+		next, _ := state["next"].(string)
+		if next == "FINISH" || next == "" {
 			return graph.END
 		}
 		return next
 	})
 
-	// Edges from members back to supervisor
 	for _, name := range memberNames {
+		workflow.AddEdge(name, "supervisor")
+	}
+
+	return workflow.Compile()
+}
+
+// CreateSupervisor creates a generic supervisor graph
+func CreateSupervisor[S any](
+	model llms.Model,
+	members map[string]*graph.StateRunnable[S],
+	getMessages func(S) []llms.MessageContent,
+	getNext func(S) string,
+	setNext func(S, string) S,
+) (*graph.StateRunnable[S], error) {
+	workflow := graph.NewStateGraph[S]()
+
+	var memberNames []string
+	for name := range members {
+		memberNames = append(memberNames, name)
+	}
+
+	workflow.AddNode("supervisor", "Supervisor orchestration node", func(ctx context.Context, state S) (S, error) {
+		messages := getMessages(state)
+		options := append(memberNames, "FINISH")
+		routeTool := llms.Tool{
+			Type: "function",
+			Function: &llms.FunctionDefinition{
+				Name:        "route",
+				Description: "Select the next role.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"next": map[string]any{
+							"type": "string",
+							"enum": options,
+						},
+					},
+					"required": []string{"next"},
+				},
+			},
+		}
+
+		systemPrompt := fmt.Sprintf(
+			"You are a supervisor tasked with managing a conversation between: %s. Respond with the worker to act next or FINISH. Use the 'route' tool.",
+			strings.Join(memberNames, ", "),
+		)
+
+		inputMessages := append([]llms.MessageContent{llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt)}, messages...)
+
+		toolChoice := llms.ToolChoice{Type: "function", Function: &llms.FunctionReference{Name: "route"}}
+		resp, err := model.GenerateContent(ctx, inputMessages, llms.WithTools([]llms.Tool{routeTool}), llms.WithToolChoice(toolChoice))
+		if err != nil {
+			return state, err
+		}
+
+		choice := resp.Choices[0]
+		if len(choice.ToolCalls) == 0 {
+			return state, fmt.Errorf("supervisor did not select a next step")
+		}
+
+		var args struct {
+			Next string `json:"next"`
+		}
+		if err := json.Unmarshal([]byte(choice.ToolCalls[0].FunctionCall.Arguments), &args); err != nil {
+			return state, fmt.Errorf("failed to parse route arguments: %w", err)
+		}
+
+		return setNext(state, args.Next), nil
+	})
+
+	for name, runnable := range members {
+		agentName := name
+		agentRunnable := runnable
+		workflow.AddNode(agentName, "Agent: "+agentName, func(ctx context.Context, state S) (S, error) {
+			return agentRunnable.Invoke(ctx, state)
+		})
+	}
+
+	workflow.SetEntryPoint("supervisor")
+	workflow.AddConditionalEdge("supervisor", func(ctx context.Context, state S) string {
+		next := getNext(state)
+		if next == "FINISH" || next == "" {
+			return graph.END
+		}
+		return next
+	})
+
+	for name := range members {
 		workflow.AddEdge(name, "supervisor")
 	}
 

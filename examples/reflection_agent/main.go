@@ -50,7 +50,8 @@ func runBasicReflection(model llms.Model) {
 		Verbose:       true,
 	}
 
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	// Use map state convenience function
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
@@ -93,7 +94,7 @@ Evaluate the documentation for:
 Provide specific, actionable feedback.`,
 	}
 
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
@@ -136,7 +137,7 @@ Evaluate the review for:
 Provide recommendations for improvement.`,
 	}
 
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
@@ -169,9 +170,7 @@ func getUserById(id int) (*User, error) {
 	printResults(result)
 }
 
-func printResults(result any) {
-	finalState := result.(map[string]any)
-
+func printResults(finalState map[string]any) {
 	// Print iteration count
 	iteration, _ := finalState["iteration"].(int)
 	fmt.Printf("\n✅ Completed after %d iteration(s)\n\n", iteration)

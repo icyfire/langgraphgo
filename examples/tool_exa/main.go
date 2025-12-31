@@ -31,21 +31,22 @@ func main() {
 	}
 
 	// 2. Initialize the Tool
-	exaTool, err := tool.NewExaSearch("", tool.WithExaNumResults(3))
+	exaTool, err := tool.NewExaSearch("",
+		tool.WithExaNumResults(5),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 3. Create the ReAct Agent
-	agent, err := prebuilt.CreateReactAgent(llm, []tools.Tool{exaTool}, 20)
+	// 3. Create the ReAct Agent using map state convenience function
+	agent, err := prebuilt.CreateReactAgentMap(llm, []tools.Tool{exaTool}, 20)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
 
 	// 4. Run the Agent
-	query := "What are the latest developments in autonomous AI agents in 2024?"
+	query := "Latest news about SpaceX Starship in 2025"
 	fmt.Printf("User: %s\n\n", query)
-	fmt.Println("Agent is thinking and searching...")
 
 	inputs := map[string]any{
 		"messages": []llms.MessageContent{
@@ -59,13 +60,12 @@ func main() {
 	}
 
 	// 5. Print the Result
-	if state, ok := response.(map[string]any); ok {
-		if messages, ok := state["messages"].([]llms.MessageContent); ok {
-			lastMsg := messages[len(messages)-1]
-			for _, part := range lastMsg.Parts {
-				if text, ok := part.(llms.TextContent); ok {
-					fmt.Printf("\nAgent: %s\n", text.Text)
-				}
+	messages, ok := response["messages"].([]llms.MessageContent)
+	if ok {
+		lastMsg := messages[len(messages)-1]
+		for _, part := range lastMsg.Parts {
+			if text, ok := part.(llms.TextContent); ok {
+				fmt.Printf("\nAgent: %s\n", text.Text)
 			}
 		}
 	}

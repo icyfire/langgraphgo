@@ -82,8 +82,7 @@ Only count approved expenses.`,
 		elapsed := time.Since(startTime)
 
 		// Extract final answer
-		resultState := result.(map[string]any)
-		messages := resultState["messages"].([]llms.MessageContent)
+		messages := result["messages"].([]llms.MessageContent)
 
 		fmt.Println("\n--- Conversation Flow ---")
 		for idx, msg := range messages {
@@ -112,14 +111,14 @@ Only count approved expenses.`,
 			}
 		}
 
-		fmt.Printf("\n--- Execution Stats ---\n")
+		fmt.Printf("\n--- Execution Stats ---")
 		fmt.Printf("Total time: %v\n", elapsed)
 		fmt.Printf("Messages exchanged: %d\n", len(messages))
 
 		// Get last AI message as final answer
 		for i := len(messages) - 1; i >= 0; i-- {
 			if messages[i].Role == llms.ChatMessageTypeAI {
-				fmt.Printf("\n--- Final Answer ---\n")
+				fmt.Printf("\n--- Final Answer ---")
 				for _, part := range messages[i].Parts {
 					if textPart, ok := part.(llms.TextContent); ok {
 						fmt.Println(textPart.Text)

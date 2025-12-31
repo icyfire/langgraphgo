@@ -3,77 +3,79 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
 )
 
 func main() {
-	// Create streaming graph
-	g := graph.NewStreamingStateGraph()
+	// Create a streaming graph for a text processing pipeline
+	g := graph.NewStreamingStateGraph[map[string]any]()
 
-	// Add nodes with listeners
-	analyze := g.AddNode("analyze", "analyze", func(ctx context.Context, state any) (any, error) {
-		time.Sleep(100 * time.Millisecond) // Simulate processing
-		return fmt.Sprintf("analyzed_%v", state), nil
+	// Define nodes
+	analyze := g.AddNode("analyze", "analyze", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		input := state["input"].(string)
+		time.Sleep(200 * time.Millisecond)
+		return map[string]any{"analysis": fmt.Sprintf("Length: %d", len(input))}, nil
 	})
 
-	enhance := g.AddNode("enhance", "enhance", func(ctx context.Context, state any) (any, error) {
-		time.Sleep(200 * time.Millisecond) // Simulate processing
-		return fmt.Sprintf("enhanced_%v", state), nil
+	enhance := g.AddNode("enhance", "enhance", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		input := state["input"].(string)
+		time.Sleep(300 * time.Millisecond)
+		return map[string]any{"enhanced": strings.ToUpper(input)}, nil
 	})
 
-	// Build pipeline
-	g.AddEdge("analyze", "enhance")
-	g.AddEdge("enhance", graph.END)
-	g.SetEntryPoint("analyze")
+	summarize := g.AddNode("summarize", "summarize", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		analysis := state["analysis"].(string)
+		enhanced := state["enhanced"].(string)
+		time.Sleep(200 * time.Millisecond)
+		return map[string]any{"summary": fmt.Sprintf("%s -> %s", analysis, enhanced)}, nil
+	})
 
-	// Add real-time listeners
-	progressListener := graph.NewProgressListener()
-	chatListener := graph.NewChatListener()
-	metricsListener := graph.NewMetricsListener()
-
+	// Add progress listeners to nodes
+	progressListener := graph.NewProgressListener().WithTiming(true)
 	analyze.AddListener(progressListener)
-	analyze.AddListener(chatListener)
-	analyze.AddListener(metricsListener)
-
 	enhance.AddListener(progressListener)
-	enhance.AddListener(chatListener)
-	enhance.AddListener(metricsListener)
+	summarize.AddListener(progressListener)
 
-	// Compile and execute with streaming
-	streamingRunnable, err := g.CompileStreaming()
+	// Define flow
+	g.SetEntryPoint("analyze")
+	g.AddEdge("analyze", "enhance")
+	g.AddEdge("enhance", "summarize")
+	g.AddEdge("summarize", graph.END)
+
+	// Compile
+	runnable, err := g.CompileStreaming()
 	if err != nil {
 		panic(err)
 	}
 
-	executor := graph.NewStreamingExecutor(streamingRunnable)
+	// Execute with streaming
+	fmt.Println("Starting pipeline...")
+	input := map[string]any{"input": "hello world"}
 
-	err = executor.ExecuteWithCallback(
-		context.Background(),
-		"input_document",
-		// Event callback - receives real-time updates
-		func(event graph.StreamEvent) {
-			fmt.Printf("[%s] Event: %s from %s\n",
-				time.Now().Format("15:04:05.000"),
-				event.Event,
-				event.NodeName)
-		},
-		// Result callback - receives final result
-		func(result any, err error) {
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-			} else {
-				fmt.Printf("Final result: %v\n", result)
+	// Stream returns a channel wrapper
+	streamResult := runnable.Stream(context.Background(), input)
+
+	// Process events
+	for event := range streamResult.Events {
+		if event.Error != nil {
+			fmt.Printf("Error: %v\n", event.Error)
+			return
+		}
+
+		// We can react to specific events if needed,
+		// but the ProgressListener attached to nodes handles printing.
+		// Here we just consume the channel to let it run.
+
+		if event.Event == graph.NodeEventComplete {
+			// Maybe show partial results
+			if event.NodeName == "enhance" {
+				fmt.Printf(">> Intermediate result: %v\n", event.State)
 			}
-		},
-	)
-
-	if err != nil {
-		panic(err)
+		}
 	}
 
-	// Print metrics summary
-	fmt.Println("\nMetrics Summary:")
-	metricsListener.PrintSummary(nil)
+	fmt.Println("Pipeline finished.")
 }

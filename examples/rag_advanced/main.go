@@ -150,7 +150,7 @@ func main() {
 	}
 
 	// Visualize the pipeline
-	exporter := graph.NewExporter(pipeline.GetGraph())
+	exporter := graph.GetGraphForRunnable(runnable)
 	fmt.Println("=== Advanced RAG Pipeline Visualization (Mermaid) ===")
 	fmt.Println(exporter.DrawMermaid())
 	fmt.Println()
@@ -167,46 +167,54 @@ func main() {
 		fmt.Printf("=== Query %d ===\n", i+1)
 		fmt.Printf("Question: %s\n\n", query)
 
-		result, err := runnable.Invoke(ctx, rag.RAGState{
-			Query: query,
+		result, err := runnable.Invoke(ctx, map[string]any{
+			"query": query,
 		})
 		if err != nil {
 			log.Printf("Failed to process query: %v", err)
 			continue
 		}
 
-		finalState := result.(rag.RAGState)
+		finalState := result
 
 		fmt.Println("Retrieved and Reranked Documents:")
-		for j, doc := range finalState.Documents {
-			source := "Unknown"
-			if s, ok := doc.Metadata["source"]; ok {
-				source = fmt.Sprintf("%v", s)
-			}
-			category := "N/A"
-			if c, ok := doc.Metadata["category"]; ok {
-				category = fmt.Sprintf("%v", c)
-			}
-			fmt.Printf("  [%d] %s (Category: %s)\n", j+1, source, category)
-			fmt.Printf("      %s\n", truncate(doc.Content, 120))
-		}
-
-		if len(finalState.RankedDocuments) > 0 {
-			fmt.Printf("\nRelevance Scores:\n")
-			for j, rd := range finalState.RankedDocuments {
-				if j >= 3 {
-					break // Show top 3 scores
+		if docs, ok := finalState["documents"].([]rag.RAGDocument); ok {
+			for j, doc := range docs {
+				source := "Unknown"
+				if s, ok := doc.Metadata["source"]; ok {
+					source = fmt.Sprintf("%v", s)
 				}
-				fmt.Printf("  [%d] Score: %.4f\n", j+1, rd.Score)
+				category := "N/A"
+				if c, ok := doc.Metadata["category"]; ok {
+					category = fmt.Sprintf("%v", c)
+				}
+				fmt.Printf("  [%d] %s (Category: %s)\n", j+1, source, category)
+				fmt.Printf("      %s\n", truncate(doc.Content, 120))
 			}
 		}
 
-		fmt.Printf("\nAnswer: %s\n", finalState.Answer)
+		if rankedDocs, ok := finalState["ranked_documents"].([]rag.DocumentSearchResult); ok {
+			if len(rankedDocs) > 0 {
+				fmt.Printf("\nRelevance Scores:\n")
+				for j, rd := range rankedDocs {
+					if j >= 3 {
+						break // Show top 3 scores
+					}
+					fmt.Printf("  [%d] Score: %.4f\n", j+1, rd.Score)
+				}
+			}
+		}
 
-		if len(finalState.Citations) > 0 {
-			fmt.Println("\nCitations:")
-			for _, citation := range finalState.Citations {
-				fmt.Printf("  %s\n", citation)
+		if answer, ok := finalState["answer"].(string); ok {
+			fmt.Printf("\nAnswer: %s\n", answer)
+		}
+
+		if citations, ok := finalState["citations"].([]string); ok {
+			if len(citations) > 0 {
+				fmt.Println("\nCitations:")
+				for _, citation := range citations {
+					fmt.Printf("  %s\n", citation)
+				}
 			}
 		}
 

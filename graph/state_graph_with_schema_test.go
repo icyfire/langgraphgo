@@ -14,15 +14,10 @@ func TestNewMessageGraph(t *testing.T) {
 	}
 
 	// Verify messages reducer is registered
-	// Schema is wrapped in MapSchemaAdapter for map[string]any
-	mapAdapter, ok := g.Schema.(*MapSchemaAdapter)
+	// Schema is now MapSchema directly
+	mapSchema, ok := g.Schema.(*MapSchema)
 	if !ok {
-		t.Fatal("Schema should be a MapSchemaAdapter")
-	}
-
-	mapSchema := mapAdapter.Schema
-	if mapSchema == nil {
-		t.Fatal("MapSchema should not be nil")
+		t.Fatal("Schema should be a MapSchema")
 	}
 
 	if mapSchema.Reducers == nil {

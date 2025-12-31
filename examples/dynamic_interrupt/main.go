@@ -10,23 +10,24 @@ import (
 )
 
 func main() {
-	// Create a simple MessageGraph
-	g := graph.NewStateGraph()
+	// Create a state graph with map state
+	g := graph.NewStateGraph[map[string]any]()
 
-	// Define a node that uses dynamic interrupt
-	g.AddNode("ask_name", "ask_name", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("-> Node 'ask_name' executing...")
-
-		// Call Interrupt to pause execution and wait for input.
-		// If a ResumeValue is present in the context (provided during resume),
-		// it returns that value. Otherwise, it returns a NodeInterrupt error.
-		name, err := graph.Interrupt(ctx, "What is your name?")
+	g.AddNode("ask_name", "ask_name", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		// This simulates an interrupt.
+		// graph.Interrupt pauses execution and waits for input.
+		// When execution resumes, it returns the provided value.
+		answer, err := graph.Interrupt(ctx, "What is your name?")
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Printf("-> Node 'ask_name' received input: %v\n", name)
-		return fmt.Sprintf("Hello, %v!", name), nil
+		// Use the answer
+		return map[string]any{
+				"name":    answer,
+				"message": fmt.Sprintf("Hello, %s!", answer),
+			},
+			nil
 	})
 
 	g.SetEntryPoint("ask_name")
@@ -39,14 +40,14 @@ func main() {
 
 	// 1. Initial Run
 	fmt.Println("--- 1. Initial Execution ---")
-	// We pass nil as initial state
-	_, err = runnable.Invoke(context.Background(), nil)
+	// We pass empty map as initial state
+	_, err = runnable.Invoke(context.Background(), map[string]any{})
 
 	// Check if the execution was interrupted
 	var graphInterrupt *graph.GraphInterrupt
 	if errors.As(err, &graphInterrupt) {
 		fmt.Printf("Graph interrupted at node: %s\n", graphInterrupt.Node)
-		fmt.Printf("Interrupt Query: %v\n", graphInterrupt.InterruptValue)
+		fmt.Printf("Interrupt Value (Query): %v\n", graphInterrupt.InterruptValue)
 
 		// Simulate getting input from a user
 		userInput := "Alice"
@@ -62,7 +63,8 @@ func main() {
 
 		// Re-run the graph. The 'ask_name' node will run again,
 		// but this time graph.Interrupt() will return 'userInput' immediately.
-		res, err := runnable.InvokeWithConfig(context.Background(), nil, config)
+		// Note: We need to pass the same initial state (or the state at interruption if we had it, but here it's stateless start)
+		res, err := runnable.InvokeWithConfig(context.Background(), map[string]any{}, config)
 		if err != nil {
 			log.Fatal(err)
 		}

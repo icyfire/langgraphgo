@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// Define custom nodes that can be used in the workflow
-	nodes := []*graph.Node{
+	nodes := []graph.TypedNode[map[string]any]{
 		{
 			Name:        "fetch_data",
 			Description: "Fetch user data from the database",
@@ -67,7 +67,7 @@ func main() {
 	}
 
 	// Create Planning Agent with verbose output
-	agent, err := prebuilt.CreatePlanningAgent(
+	agent, err := prebuilt.CreatePlanningAgentMap(
 		model,
 		nodes,
 		[]tools.Tool{},
@@ -91,7 +91,7 @@ func main() {
 	runAgent(agent, query3)
 }
 
-func runAgent(agent *graph.StateRunnableUntyped query string) {
+func runAgent(agent *graph.StateRunnable[map[string]any], query string) {
 	fmt.Printf("\nUser Query: %s\n\n", query)
 
 	initialState := map[string]any{
@@ -107,8 +107,7 @@ func runAgent(agent *graph.StateRunnableUntyped query string) {
 	}
 
 	// Print final result
-	mState := res.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+	messages := res["messages"].([]llms.MessageContent)
 
 	fmt.Println("\n--- Execution Result ---")
 	for i, msg := range messages {
@@ -126,9 +125,8 @@ func runAgent(agent *graph.StateRunnableUntyped query string) {
 
 // Node implementations
 
-func fetchDataNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func fetchDataNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("📥 Fetching data from database...")
 
@@ -143,9 +141,8 @@ func fetchDataNode(ctx context.Context, state any) (any, error) {
 	}, nil
 }
 
-func validateDataNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func validateDataNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("✅ Validating data...")
 
@@ -159,9 +156,8 @@ func validateDataNode(ctx context.Context, state any) (any, error) {
 	}, nil
 }
 
-func transformDataNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func transformDataNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("🔄 Transforming data...")
 
@@ -175,9 +171,8 @@ func transformDataNode(ctx context.Context, state any) (any, error) {
 	}, nil
 }
 
-func analyzeDataNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func analyzeDataNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("📊 Analyzing data...")
 
@@ -191,9 +186,8 @@ func analyzeDataNode(ctx context.Context, state any) (any, error) {
 	}, nil
 }
 
-func saveResultsNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func saveResultsNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("💾 Saving results...")
 
@@ -207,9 +201,8 @@ func saveResultsNode(ctx context.Context, state any) (any, error) {
 	}, nil
 }
 
-func generateReportNode(ctx context.Context, state any) (any, error) {
-	mState := state.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+func generateReportNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	messages := state["messages"].([]llms.MessageContent)
 
 	fmt.Println("📝 Generating report...")
 

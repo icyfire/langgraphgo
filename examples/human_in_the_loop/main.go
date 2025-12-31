@@ -17,33 +17,30 @@ type State struct {
 }
 
 func main() {
-	// Create a new graph
-	g := graph.NewStateGraph()
+	// Create a new graph with typed state
+	g := graph.NewStateGraph[State]()
 
 	// Define nodes
-	g.AddNode("process_request", "process_request", func(ctx context.Context, state any) (any, error) {
-		s := state.(State)
-		fmt.Printf("[Process] Processing request: %s\n", s.Input)
-		s.Output = "Processed: " + s.Input
-		return s, nil
+	g.AddNode("process_request", "process_request", func(ctx context.Context, state State) (State, error) {
+		fmt.Printf("[Process] Processing request: %s\n", state.Input)
+		state.Output = "Processed: " + state.Input
+		return state, nil
 	})
 
-	g.AddNode("human_approval", "human_approval", func(ctx context.Context, state any) (any, error) {
-		s := state.(State)
-		if s.Approved {
+	g.AddNode("human_approval", "human_approval", func(ctx context.Context, state State) (State, error) {
+		if state.Approved {
 			fmt.Println("[Human] Request APPROVED.")
-			s.Output += " (Approved)"
+			state.Output += " (Approved)"
 		} else {
 			fmt.Println("[Human] Request REJECTED.")
-			s.Output += " (Rejected)"
+			state.Output += " (Rejected)"
 		}
-		return s, nil
+		return state, nil
 	})
 
-	g.AddNode("finalize", "finalize", func(ctx context.Context, state any) (any, error) {
-		s := state.(State)
-		fmt.Printf("[Finalize] Final output: %s\n", s.Output)
-		return s, nil
+	g.AddNode("finalize", "finalize", func(ctx context.Context, state State) (State, error) {
+		fmt.Printf("[Finalize] Final output: %s\n", state.Output)
+		return state, nil
 	})
 
 	// Define edges
@@ -70,6 +67,9 @@ func main() {
 		InterruptBefore: []string{"human_approval"},
 	}
 
+	// Note: InvokeWithConfig returns (S, error) where S is State struct.
+	// But interrupt error is separate.
+	// If interrupted, it returns the state at interrupt and the GraphInterrupt error.
 	res, err := runnable.InvokeWithConfig(context.Background(), initialState, config)
 
 	// We expect an interrupt error
@@ -93,11 +93,10 @@ func main() {
 	fmt.Println("Approving request...")
 
 	// Update state to reflect approval
-	// In a real app, you would fetch the saved state, modify it, and pass it back
-	// Here we just modify the state we got from the interrupt
 	var interrupt *graph.GraphInterrupt
 	errors.As(err, &interrupt)
 
+	// Since we use typed graph, interrupt.State is 'any' but contains 'State' struct.
 	currentState := interrupt.State.(State)
 	currentState.Approved = true // Human approves
 
@@ -112,7 +111,6 @@ func main() {
 		log.Fatalf("Error resuming workflow: %v", err)
 	}
 
-	finalState := finalRes.(State)
 	fmt.Printf("Workflow completed successfully.\n")
-	fmt.Printf("Final Result: %+v\n", finalState)
+	fmt.Printf("Final Result: %+v\n", finalRes)
 }

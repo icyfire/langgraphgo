@@ -13,7 +13,7 @@ type TestState struct {
 	Name  string `json:"name"`
 }
 
-// mapSchemaAdapter adapts MapSchema to StateSchemaTyped[any]
+// mapSchemaAdapter adapts MapSchema to StateSchema[any]
 type mapSchemaAdapter struct {
 	*MapSchema
 }
@@ -23,10 +23,15 @@ func (m *mapSchemaAdapter) Init() any {
 }
 
 func (m *mapSchemaAdapter) Update(current, new any) (any, error) {
-	return m.MapSchema.Update(current, new)
+	currentMap, ok1 := current.(map[string]any)
+	newMap, ok2 := new.(map[string]any)
+	if !ok1 || !ok2 {
+		return current, nil
+	}
+	return m.MapSchema.Update(currentMap, newMap)
 }
 
-func TestStateGraphTyped_BasicFunctionality(t *testing.T) {
+func TestStateGraph_BasicFunctionality(t *testing.T) {
 	// Create a new typed state graph
 	g := NewStateGraph[TestState]()
 
@@ -70,7 +75,7 @@ func TestStateGraphTyped_BasicFunctionality(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_ConditionalEdges(t *testing.T) {
+func TestStateGraph_ConditionalEdges(t *testing.T) {
 	g := NewStateGraph[TestState]()
 
 	g.AddNode("process", "Process", func(ctx context.Context, state TestState) (TestState, error) {
@@ -122,7 +127,7 @@ func TestStateGraphTyped_ConditionalEdges(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_WithSchema(t *testing.T) {
+func TestStateGraph_WithSchema(t *testing.T) {
 	g := NewStateGraph[TestState]()
 
 	// Define schema with merge function
@@ -168,12 +173,12 @@ func TestStateGraphTyped_WithSchema(t *testing.T) {
 	}
 }
 
-func TestListenableStateGraphTyped_BasicFunctionality(t *testing.T) {
-	g := NewListenableStateGraphTyped[TestState]()
+func TestListenableStateGraph_BasicFunctionality(t *testing.T) {
+	g := NewListenableStateGraph[TestState]()
 
 	// Add a listener to track events
 	var events []string
-	listener := NodeListenerTypedFunc[TestState](
+	listener := NodeListenerFunc[TestState](
 		func(ctx context.Context, event NodeEvent, nodeName string, state TestState, err error) {
 			events = append(events, string(event)+":"+nodeName)
 		},
@@ -211,7 +216,7 @@ func TestListenableStateGraphTyped_BasicFunctionality(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_ParallelExecution(t *testing.T) {
+func TestStateGraph_ParallelExecution(t *testing.T) {
 	g := NewStateGraph[TestState]()
 
 	// Add multiple nodes that can run in parallel
@@ -255,7 +260,7 @@ func TestStateGraphTyped_ParallelExecution(t *testing.T) {
 	}
 }
 
-func BenchmarkStateGraphTyped_Invoke(b *testing.B) {
+func BenchmarkStateGraph_Invoke(b *testing.B) {
 	g := NewStateGraph[TestState]()
 
 	g.AddNode("increment", "Increment", func(ctx context.Context, state TestState) (TestState, error) {
@@ -282,8 +287,8 @@ func BenchmarkStateGraphTyped_Invoke(b *testing.B) {
 	}
 }
 
-func BenchmarkListenableStateGraphTyped_Invoke(b *testing.B) {
-	g := NewListenableStateGraphTyped[TestState]()
+func BenchmarkListenableStateGraph_Invoke(b *testing.B) {
+	g := NewListenableStateGraph[TestState]()
 
 	g.AddNode("increment", "Increment", func(ctx context.Context, state TestState) (TestState, error) {
 		state.Count++
@@ -309,8 +314,8 @@ func BenchmarkListenableStateGraphTyped_Invoke(b *testing.B) {
 	}
 }
 
-// Test StateGraphTyped methods directly
-func TestStateGraphTyped_AdditionalMethods(t *testing.T) {
+// Test StateGraph methods directly
+func TestStateGraph_AdditionalMethods(t *testing.T) {
 	g := NewStateGraph[TestState]()
 
 	// Test SetRetryPolicy
@@ -385,7 +390,7 @@ func TestStateRunnable_WithTracer(t *testing.T) {
 }
 
 // Test edge cases
-func TestStateGraphTyped_MultipleEdgesFromNode(t *testing.T) {
+func TestStateGraph_MultipleEdgesFromNode(t *testing.T) {
 	g := NewStateGraph[TestState]()
 
 	g.AddNode("source", "Source node", func(ctx context.Context, state TestState) (TestState, error) {
@@ -429,7 +434,7 @@ func TestStateGraphTyped_MultipleEdgesFromNode(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_ComplexStateType(t *testing.T) {
+func TestStateGraph_ComplexStateType(t *testing.T) {
 	// Test with complex nested state
 	type ComplexState struct {
 		Info struct {
@@ -484,7 +489,7 @@ func TestStateGraphTyped_ComplexStateType(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_MapState(t *testing.T) {
+func TestStateGraph_MapState(t *testing.T) {
 	// Test with map state
 	g := NewStateGraph[map[string]any]()
 
@@ -525,7 +530,7 @@ func TestStateGraphTyped_MapState(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_StringState(t *testing.T) {
+func TestStateGraph_StringState(t *testing.T) {
 	// Test with simple string state
 	g := NewStateGraph[string]()
 
@@ -725,7 +730,7 @@ func TestExecuteNodeWithRetry_RetryPolicy(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_CommandGoto(t *testing.T) {
+func TestStateGraph_CommandGoto(t *testing.T) {
 	// Use any type to allow returning Command
 	g := NewStateGraph[any]()
 
@@ -787,7 +792,7 @@ func TestStateGraphTyped_CommandGoto(t *testing.T) {
 	}
 }
 
-func TestStateGraphTyped_CommandGotoMultiple(t *testing.T) {
+func TestStateGraph_CommandGotoMultiple(t *testing.T) {
 	// Use any type to allow returning Command
 	g := NewStateGraph[any]()
 

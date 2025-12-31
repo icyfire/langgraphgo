@@ -87,8 +87,8 @@ func main() {
 		CalculatorTool{},
 	}
 
-	// Create ReAct Agent
-	agent, err := prebuilt.CreateReactAgent(model, inputTools, 20)
+	// Create ReAct Agent using map state convenience function
+	agent, err := prebuilt.CreateReactAgentMap(model, inputTools, 20)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,8 +109,7 @@ func main() {
 	}
 
 	// Print Result
-	mState := res.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+	messages := res["messages"].([]llms.MessageContent)
 	lastMsg := messages[len(messages)-1]
 
 	if len(lastMsg.Parts) > 0 {

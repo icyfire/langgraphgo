@@ -27,8 +27,17 @@ func main() {
 		return
 	}
 
-	// Create a checkpointable graph
-	g := graph.NewCheckpointableStateGraph()
+	// Create a checkpointable graph with typed state
+	g := graph.NewCheckpointableStateGraph[ProcessState]()
+
+	// Define state schema
+	schema := graph.NewStructSchema(
+		ProcessState{},
+		func(current, new ProcessState) (ProcessState, error) {
+			return new, nil
+		},
+	)
+	g.SetSchema(schema)
 
 	// Initialize Postgres Checkpoint Store
 	store, err := postgres.NewPostgresCheckpointStore(context.Background(), postgres.PostgresOptions{
@@ -55,8 +64,7 @@ func main() {
 	g.SetCheckpointConfig(config)
 
 	// Add processing nodes
-	g.AddNode("step1", "step1", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step1", "step1", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 1
 		s.Data = s.Data + " → Step1"
 		s.History = append(s.History, "Completed Step 1")
@@ -65,8 +73,7 @@ func main() {
 		return s, nil
 	})
 
-	g.AddNode("step2", "step2", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step2", "step2", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 2
 		s.Data = s.Data + " → Step2"
 		s.History = append(s.History, "Completed Step 2")
@@ -75,8 +82,7 @@ func main() {
 		return s, nil
 	})
 
-	g.AddNode("step3", "step3", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step3", "step3", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 3
 		s.Data = s.Data + " → Step3"
 		s.History = append(s.History, "Completed Step 3")
@@ -112,7 +118,7 @@ func main() {
 		panic(err)
 	}
 
-	finalState := result.(ProcessState)
+	finalState := result
 	fmt.Printf("\n=== Execution completed ===\n")
 	fmt.Printf("Final Step: %d\n", finalState.Step)
 	fmt.Printf("Final Data: %s\n", finalState.Data)
@@ -132,16 +138,25 @@ func main() {
 	// Demonstrate resuming from a checkpoint
 	if len(checkpoints) > 1 {
 		fmt.Printf("\n=== Resuming from checkpoint %s ===\n", checkpoints[1].ID)
-		resumedState, err := runnable.ResumeFromCheckpoint(ctx, checkpoints[1].ID)
+		cp, err := runnable.LoadCheckpoint(ctx, checkpoints[1].ID)
 		if err != nil {
 			fmt.Printf("Error resuming: %v\n", err)
 		} else {
-			// Since data is loaded from JSON, it comes back as map[string]any
-			// We need to convert it back to ProcessState
+			// Since data is loaded from JSON (via Postgres), it typically comes back as map[string]any
+			// if the store implementation unmarshals into interface{}.
+			// Checkpoint.State is 'any'.
+			// We need to convert it back to ProcessState.
+
 			var resumed ProcessState
 
-			importJSON, _ := json.Marshal(resumedState)
-			json.Unmarshal(importJSON, &resumed)
+			// Try direct assertion first
+			if s, ok := cp.State.(ProcessState); ok {
+				resumed = s
+			} else {
+				// Fallback to JSON roundtrip
+				importJSON, _ := json.Marshal(cp.State)
+				json.Unmarshal(importJSON, &resumed)
+			}
 
 			fmt.Printf("Resumed at Step: %d\n", resumed.Step)
 			fmt.Printf("Resumed Data: %s\n", resumed.Data)

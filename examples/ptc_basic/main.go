@@ -63,17 +63,23 @@ func (t CalculatorTool) Call(ctx context.Context, input string) (string, error) 
 		parts := strings.Split(input, ",")
 		for _, part := range parts {
 			if strings.Contains(part, `"a"`) {
-				numStr := strings.Split(part, ":")[1]
-				numStr = strings.Trim(strings.TrimSpace(numStr), "}")
-				if num, err := strconv.ParseFloat(numStr, 64); err == nil {
-					params.A = num
+				numParts := strings.Split(part, ":")
+				if len(numParts) > 1 {
+					numStr := numParts[1]
+					numStr = strings.Trim(strings.TrimSpace(numStr), "}")
+					if num, err := strconv.ParseFloat(numStr, 64); err == nil {
+						params.A = num
+					}
 				}
 			}
 			if strings.Contains(part, `"b"`) {
-				numStr := strings.Split(part, ":")[1]
-				numStr = strings.Trim(strings.TrimSpace(numStr), "}")
-				if num, err := strconv.ParseFloat(numStr, 64); err == nil {
-					params.B = num
+				numParts := strings.Split(part, ":")
+				if len(numParts) > 1 {
+					numStr := numParts[1]
+					numStr = strings.Trim(strings.TrimSpace(numStr), "}")
+					if num, err := strconv.ParseFloat(numStr, 64); err == nil {
+						params.B = num
+					}
 				}
 			}
 		}
@@ -234,7 +240,7 @@ func main() {
 	}
 
 	// Print result
-	messages := result.(map[string]any)["messages"].([]llms.MessageContent)
+	messages := result["messages"].([]llms.MessageContent)
 
 	fmt.Println("\n" + strings.Repeat("-", 60))
 	fmt.Println("Execution Complete!")

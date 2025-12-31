@@ -22,10 +22,9 @@ func main() {
 func runBasicExample() {
 	fmt.Println("\n1️⃣ Basic Graph Execution")
 
-	g := graph.NewStateGraph()
+	g := graph.NewStateGraph[string]()
 
-	g.AddNode("process", "process", func(ctx context.Context, state any) (any, error) {
-		input := state.(string)
+	g.AddNode("process", "process", func(ctx context.Context, input string) (string, error) {
 		return fmt.Sprintf("processed_%s", input), nil
 	})
 
@@ -41,11 +40,12 @@ func runBasicExample() {
 func runStreamingExample() {
 	fmt.Println("\n2️⃣ Streaming with Listeners")
 
-	g := graph.NewListenableStateGraph()
+	g := graph.NewListenableStateGraph[map[string]any]()
 
-	node := g.AddNode("stream_process", "stream_process", func(ctx context.Context, state any) (any, error) {
+	node := g.AddNode("stream_process", "stream_process", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		time.Sleep(100 * time.Millisecond) // Simulate work
-		return fmt.Sprintf("streamed_%v", state), nil
+		state["result"] = fmt.Sprintf("streamed_%v", state["input"])
+		return state, nil
 	})
 
 	g.AddEdge("stream_process", graph.END)
@@ -57,24 +57,27 @@ func runStreamingExample() {
 	node.AddListener(progressListener)
 
 	runnable, _ := g.CompileListenable()
-	result, _ := runnable.Invoke(context.Background(), "stream_input")
+	events := runnable.Stream(context.Background(), map[string]any{"input": "stream_input"})
 
-	fmt.Printf("   Streamed Result: %s\n", result)
+	// Process events
+	for event := range events {
+		if event.Event == graph.NodeEventComplete {
+			fmt.Printf("   Event Complete: %s\n", event.NodeName)
+		}
+	}
 }
 
 func runCheckpointingExample() {
 	fmt.Println("\n3️⃣ Checkpointing Example")
 
-	g := graph.NewCheckpointableStateGraph()
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
-	g.AddNode("checkpoint_step1", "checkpoint_step1", func(ctx context.Context, state any) (any, error) {
-		data := state.(map[string]any)
+	g.AddNode("checkpoint_step1", "checkpoint_step1", func(ctx context.Context, data map[string]any) (map[string]any, error) {
 		data["step1"] = "completed"
 		return data, nil
 	})
 
-	g.AddNode("checkpoint_step2", "checkpoint_step2", func(ctx context.Context, state any) (any, error) {
-		data := state.(map[string]any)
+	g.AddNode("checkpoint_step2", "checkpoint_step2", func(ctx context.Context, data map[string]any) (map[string]any, error) {
 		data["step2"] = "completed"
 		return data, nil
 	})
@@ -110,13 +113,13 @@ func runCheckpointingExample() {
 func runVisualizationExample() {
 	fmt.Println("\n4️⃣ Graph Visualization")
 
-	g := graph.NewStateGraph()
+	g := graph.NewStateGraph[map[string]any]()
 
-	g.AddNode("visualize_step1", "visualize_step1", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("visualize_step1", "visualize_step1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return state, nil
 	})
 
-	g.AddNode("visualize_step2", "visualize_step2", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("visualize_step2", "visualize_step2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return state, nil
 	})
 
@@ -125,7 +128,7 @@ func runVisualizationExample() {
 	g.SetEntryPoint("visualize_step1")
 
 	runnable, _ := g.Compile()
-	exporter := runnable.GetGraph()
+	exporter := graph.GetGraphForRunnable(runnable)
 
 	fmt.Println("   📊 Mermaid Diagram:")
 	mermaid := exporter.DrawMermaid()

@@ -53,8 +53,8 @@ func runCLI(username string) {
 		log.Fatalf("创建图失败: %v", err)
 	}
 
-	initialState := map[string]any{
-		"username": username,
+	initialState := &graph.State{
+		Username: username,
 	}
 
 	res, err := g.Invoke(ctx, initialState)
@@ -62,9 +62,8 @@ func runCLI(username string) {
 		log.Fatalf("运行图失败: %v", err)
 	}
 
-	profileText, _ := res["profile_text"].(string)
 	fmt.Println("\n=== 生成的画像 ===")
-	fmt.Println(profileText)
+	fmt.Println(res.ProfileText)
 }
 
 func runWeb(addr string) {
@@ -134,9 +133,9 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	logChan := make(chan string, 10)
 	ctx := context.Background()
 
-	initialState := map[string]any{
-		"username": username,
-		"log_chan": logChan,
+	initialState := &graph.State{
+		Username: username,
+		LogChan:  logChan,
 	}
 
 	resultChan := make(chan string, 1)
@@ -164,8 +163,8 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		profileText, _ := res["profile_text"].(string)
-		socialData, _ := res["social_data"].([]graph.Result)
+		profileText := res.ProfileText
+		socialData := res.SocialData
 
 		// Convert Markdown to HTML
 		extensions := parser.CommonExtensions | parser.AutoHeadingIDs
@@ -215,6 +214,7 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	resHtml := <-resultChan
 	if resHtml != "" {
 		fmt.Fprintf(w, "event: result\n")
+		// Use manual split instead of splitSeq for older go versions or just for reliability
 		lines := strings.SplitSeq(resHtml, "\n")
 		for line := range lines {
 			fmt.Fprintf(w, "data: %s\n", line)

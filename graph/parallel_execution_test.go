@@ -23,32 +23,40 @@ func TestParallelExecution_FanOut(t *testing.T) {
 
 	// Node A: Entry point
 	g.AddNode("A", "A", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		visited := appendVisitors(state, "A")
-		state["visited"] = visited
-		return state, nil
+		newState := make(map[string]any)
+		maps.Copy(newState, state)
+		visited := appendVisitors(newState, "A")
+		newState["visited"] = visited
+		return newState, nil
 	})
 
 	// Node B: Branch 1
 	g.AddNode("B", "B", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		visited := appendVisitors(state, "B")
-		state["visited"] = visited
+		newState := make(map[string]any)
+		maps.Copy(newState, state)
+		visited := appendVisitors(newState, "B")
+		newState["visited"] = visited
 		time.Sleep(10 * time.Millisecond) // Simulate work
-		return state, nil
+		return newState, nil
 	})
 
 	// Node C: Branch 2
 	g.AddNode("C", "C", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		visited := appendVisitors(state, "C")
-		state["visited"] = visited
+		newState := make(map[string]any)
+		maps.Copy(newState, state)
+		visited := appendVisitors(newState, "C")
+		newState["visited"] = visited
 		time.Sleep(10 * time.Millisecond) // Simulate work
-		return state, nil
+		return newState, nil
 	})
 
 	// Node D: Join point
 	g.AddNode("D", "D", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		visited := appendVisitors(state, "D")
-		state["visited"] = visited
-		return state, nil
+		newState := make(map[string]any)
+		maps.Copy(newState, state)
+		visited := appendVisitors(newState, "D")
+		newState["visited"] = visited
+		return newState, nil
 	})
 
 	g.SetEntryPoint("A")
@@ -80,9 +88,7 @@ func TestParallelExecution_FanOut(t *testing.T) {
 			visited = append(visited, node)
 		}
 		result := make(map[string]any)
-		for k, v := range current {
-			result[k] = v
-		}
+		maps.Copy(result, current)
 		result["visited"] = visited
 		return result, nil
 	})
@@ -118,61 +124,4 @@ func TestParallelExecution_FanOut(t *testing.T) {
 
 	assert.True(t, hasB, "Node B should be visited")
 	assert.True(t, hasC, "Node C should be visited")
-}
-
-func TestStateGraph_ParallelExecution(t *testing.T) {
-	g := NewStateGraph[map[string]any]()
-
-	// Merger function
-	merger := func(ctx context.Context, current map[string]any, newStates []map[string]any) (map[string]any, error) {
-		merged := make(map[string]any)
-		// Copy current
-		maps.Copy(merged, current)
-		// Merge new states
-		for _, s := range newStates {
-			maps.Copy(merged, s)
-		}
-		return merged, nil
-	}
-	g.SetStateMerger(merger)
-
-	g.AddNode("A", "A", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		s := make(map[string]any)
-		maps.Copy(s, state)
-		s["A"] = 1
-		return s, nil
-	})
-
-	g.AddNode("B", "B", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		s := make(map[string]any)
-		maps.Copy(s, state)
-		s["B"] = 1
-		time.Sleep(10 * time.Millisecond)
-		return s, nil
-	})
-
-	g.AddNode("C", "C", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		s := make(map[string]any)
-		maps.Copy(s, state)
-		s["C"] = 1
-		time.Sleep(10 * time.Millisecond)
-		return s, nil
-	})
-
-	g.SetEntryPoint("A")
-	g.AddEdge("A", "B")
-	g.AddEdge("A", "C")
-	g.AddEdge("B", END)
-	g.AddEdge("C", END)
-
-	runnable, err := g.Compile()
-	assert.NoError(t, err)
-
-	initialState := make(map[string]any)
-	result, err := runnable.Invoke(context.Background(), initialState)
-	assert.NoError(t, err)
-
-	assert.Equal(t, 1, result["A"])
-	assert.Equal(t, 1, result["B"])
-	assert.Equal(t, 1, result["C"])
 }

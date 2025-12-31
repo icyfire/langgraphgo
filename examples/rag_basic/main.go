@@ -23,6 +23,7 @@ func main() {
 	}
 
 	// Create sample documents
+
 	documents := []rag.Document{
 		{
 			Content: "LangGraph is a library for building stateful, multi-actor applications with LLMs. " +
@@ -93,7 +94,8 @@ func main() {
 	config.SystemPrompt = "You are a helpful AI assistant. Answer the question based on the provided context. " +
 		"If the context doesn't contain enough information to answer the question, say so."
 
-	// Build basic RAG pipeline
+		// Build basic RAG pipeline
+
 	pipeline := rag.NewRAGPipeline(config)
 	err = pipeline.BuildBasicRAG()
 	if err != nil {
@@ -107,7 +109,7 @@ func main() {
 	}
 
 	// Visualize the pipeline
-	exporter := graph.NewExporter(pipeline.GetGraph())
+	exporter := graph.GetGraphForRunnable(runnable)
 	fmt.Println("=== RAG Pipeline Visualization (Mermaid) ===")
 	fmt.Println(exporter.DrawMermaid())
 	fmt.Println()
@@ -123,27 +125,32 @@ func main() {
 		fmt.Printf("=== Query %d ===\n", i+1)
 		fmt.Printf("Question: %s\n\n", query)
 
-		result, err := runnable.Invoke(ctx, rag.RAGState{
-			Query: query,
+		result, err := runnable.Invoke(ctx, map[string]any{
+			"query": query,
 		})
 		if err != nil {
 			log.Printf("Failed to process query: %v", err)
 			continue
 		}
 
-		finalState := result.(rag.RAGState)
+		finalState := result
 
-		fmt.Println("Retrieved Documents:")
-		for j, doc := range finalState.Documents {
-			source := "Unknown"
-			if s, ok := doc.Metadata["source"]; ok {
-				source = fmt.Sprintf("%v", s)
+		// In map[string]any state, we need to extract documents
+		if docs, ok := finalState["documents"].([]rag.RAGDocument); ok {
+			fmt.Println("Retrieved Documents:")
+			for j, doc := range docs {
+				source := "Unknown"
+				if s, ok := doc.Metadata["source"]; ok {
+					source = fmt.Sprintf("%v", s)
+				}
+				fmt.Printf("  [%d] %s\n", j+1, source)
+				fmt.Printf("      %s...\n", truncate(doc.Content, 100))
 			}
-			fmt.Printf("  [%d] %s\n", j+1, source)
-			fmt.Printf("      %s...\n", truncate(doc.Content, 100))
 		}
 
-		fmt.Printf("\nAnswer: %s\n", finalState.Answer)
+		if answer, ok := finalState["answer"].(string); ok {
+			fmt.Printf("\nAnswer: %s\n", answer)
+		}
 		fmt.Println("\n" + strings.Repeat("-", 80) + "\n")
 	}
 }

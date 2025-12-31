@@ -136,7 +136,7 @@ func (o *LLM) GenerateContent(ctx context.Context, messages []llms.MessageConten
 	}
 
 	// Build chat request
-	req := &model.ChatCompletionRequest{
+	req := &model.ChatCompletionRequest{ // nolint:staticcheck
 		Model:    string(modelName),
 		Messages: arkMessages,
 	}

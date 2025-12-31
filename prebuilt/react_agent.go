@@ -10,8 +10,8 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
-// CreateReactAgent creates a new ReAct agent graph
-func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations int) (*graph.StateRunnable[map[string]any], error) {
+// CreateReactAgentMap creates a new ReAct agent graph with map[string]any state
+func CreateReactAgentMap(model llms.Model, inputTools []tools.Tool, maxIterations int) (*graph.StateRunnable[map[string]any], error) {
 	if maxIterations == 0 {
 		maxIterations = 20
 	}
@@ -22,24 +22,20 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 	workflow := graph.NewStateGraph[map[string]any]()
 
 	// Define the state schema
-	// We use a MapSchema with AppendReducer for messages
 	agentSchema := graph.NewMapSchema()
 	agentSchema.RegisterReducer("messages", graph.AppendReducer)
-	schemaAdapter := &graph.MapSchemaAdapter{Schema: agentSchema}
-	workflow.SetSchema(schemaAdapter)
+	workflow.SetSchema(agentSchema)
 
 	// Define the agent node
 	workflow.AddNode("agent", "ReAct agent decision maker", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		mState := state
-
-		messages, ok := mState["messages"].([]llms.MessageContent)
+		messages, ok := state["messages"].([]llms.MessageContent)
 		if !ok {
 			return nil, fmt.Errorf("messages key not found or invalid type")
 		}
 
 		// Check iteration count
 		iterationCount := 0
-		if count, ok := mState["iteration_count"].(int); ok {
+		if count, ok := state["iteration_count"].(int); ok {
 			iterationCount = count
 		}
 		if iterationCount >= maxIterations {
@@ -50,12 +46,10 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 					llms.TextPart("Maximum iterations reached. Please try a simpler query."),
 				},
 			}
-			mState["messages"] = append(messages, finalMsg)
-			return mState, nil
+			return map[string]any{
+				"messages": []llms.MessageContent{finalMsg},
+			}, nil
 		}
-
-		// Increment iteration count
-		mState["iteration_count"] = iterationCount + 1
 
 		// Convert tools to ToolInfo for the model
 		var toolDefs []llms.Tool
@@ -80,45 +74,32 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 			})
 		}
 
-		// We need to pass tools to the model
-		opts := []llms.CallOption{
-			llms.WithTools(toolDefs),
-		}
-
-		resp, err := model.GenerateContent(ctx, messages, opts...)
+		// Call model with tools
+		resp, err := model.GenerateContent(ctx, messages, llms.WithTools(toolDefs))
 		if err != nil {
 			return nil, err
 		}
 
 		choice := resp.Choices[0]
-
-		// Create AIMessage
 		aiMsg := llms.MessageContent{
 			Role: llms.ChatMessageTypeAI,
 		}
-
 		if choice.Content != "" {
 			aiMsg.Parts = append(aiMsg.Parts, llms.TextPart(choice.Content))
 		}
-
-		// Handle tool calls
-		if len(choice.ToolCalls) > 0 {
-			for _, tc := range choice.ToolCalls {
-				// ToolCall implements ContentPart
-				aiMsg.Parts = append(aiMsg.Parts, tc)
-			}
+		for _, tc := range choice.ToolCalls {
+			aiMsg.Parts = append(aiMsg.Parts, tc)
 		}
 
 		return map[string]any{
-			"messages": []llms.MessageContent{aiMsg},
+			"messages":        []llms.MessageContent{aiMsg},
+			"iteration_count": iterationCount + 1,
 		}, nil
 	})
 
 	// Define the tools node
 	workflow.AddNode("tools", "Tool execution node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		mState := state
-
-		messages := mState["messages"].([]llms.MessageContent)
+		messages := state["messages"].([]llms.MessageContent)
 		lastMsg := messages[len(messages)-1]
 
 		if lastMsg.Role != llms.ChatMessageTypeAI {
@@ -126,12 +107,10 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 		}
 
 		var toolMessages []llms.MessageContent
-
 		for _, part := range lastMsg.Parts {
 			if tc, ok := part.(llms.ToolCall); ok {
-				// Parse arguments to get input
 				var args map[string]any
-				_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args) // Ignore error, will use raw string if unmarshal fails
+				_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
 
 				inputVal := ""
 				if val, ok := args["input"].(string); ok {
@@ -140,7 +119,6 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 					inputVal = tc.FunctionCall.Arguments
 				}
 
-				// Execute tool
 				res, err := toolExecutor.Execute(ctx, ToolInvocation{
 					Tool:      tc.FunctionCall.Name,
 					ToolInput: inputVal,
@@ -149,7 +127,6 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 					res = fmt.Sprintf("Error: %v", err)
 				}
 
-				// Create ToolMessage
 				toolMsg := llms.MessageContent{
 					Role: llms.ChatMessageTypeTool,
 					Parts: []llms.ContentPart{
@@ -169,28 +146,146 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool, maxIterations i
 		}, nil
 	})
 
-	// Define edges
 	workflow.SetEntryPoint("agent")
-
 	workflow.AddConditionalEdge("agent", func(ctx context.Context, state map[string]any) string {
-		mState := state
-		messages := mState["messages"].([]llms.MessageContent)
+		messages := state["messages"].([]llms.MessageContent)
 		lastMsg := messages[len(messages)-1]
-
-		hasToolCalls := false
 		for _, part := range lastMsg.Parts {
 			if _, ok := part.(llms.ToolCall); ok {
-				hasToolCalls = true
-				break
+				return "tools"
 			}
-		}
-
-		if hasToolCalls {
-			return "tools"
 		}
 		return graph.END
 	})
+	workflow.AddEdge("tools", "agent")
 
+	return workflow.Compile()
+}
+
+// CreateReactAgent creates a new typed ReAct agent graph
+func CreateReactAgent[S any](
+	model llms.Model,
+	inputTools []tools.Tool,
+	getMessages func(S) []llms.MessageContent,
+	setMessages func(S, []llms.MessageContent) S,
+	getIterationCount func(S) int,
+	setIterationCount func(S, int) S,
+	maxIterations int,
+) (*graph.StateRunnable[S], error) {
+	if maxIterations == 0 {
+		maxIterations = 20
+	}
+	toolExecutor := NewToolExecutor(inputTools)
+	workflow := graph.NewStateGraph[S]()
+
+	workflow.AddNode("agent", "ReAct agent decision maker", func(ctx context.Context, state S) (S, error) {
+		iterationCount := getIterationCount(state)
+		if iterationCount >= maxIterations {
+			finalMsg := llms.MessageContent{
+				Role: llms.ChatMessageTypeAI,
+				Parts: []llms.ContentPart{
+					llms.TextPart("Maximum iterations reached. Please try a simpler query."),
+				},
+			}
+			return setMessages(state, append(getMessages(state), finalMsg)), nil
+		}
+
+		var toolDefs []llms.Tool
+		for _, t := range inputTools {
+			toolDefs = append(toolDefs, llms.Tool{
+				Type: "function",
+				Function: &llms.FunctionDefinition{
+					Name:        t.Name(),
+					Description: t.Description(),
+					Parameters: map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"input": map[string]any{
+								"type":        "string",
+								"description": "The input query for the tool",
+							},
+						},
+						"required": []string{"input"},
+					},
+				},
+			})
+		}
+
+		messages := getMessages(state)
+		resp, err := model.GenerateContent(ctx, messages, llms.WithTools(toolDefs))
+		if err != nil {
+			return state, err
+		}
+
+		choice := resp.Choices[0]
+		aiMsg := llms.MessageContent{
+			Role: llms.ChatMessageTypeAI,
+		}
+		if choice.Content != "" {
+			aiMsg.Parts = append(aiMsg.Parts, llms.TextPart(choice.Content))
+		}
+		for _, tc := range choice.ToolCalls {
+			aiMsg.Parts = append(aiMsg.Parts, tc)
+		}
+
+		state = setMessages(state, append(messages, aiMsg))
+		state = setIterationCount(state, iterationCount+1)
+		return state, nil
+	})
+
+	workflow.AddNode("tools", "Tool execution node", func(ctx context.Context, state S) (S, error) {
+		messages := getMessages(state)
+		lastMsg := messages[len(messages)-1]
+
+		var toolMessages []llms.MessageContent
+		for _, part := range lastMsg.Parts {
+			if tc, ok := part.(llms.ToolCall); ok {
+				var args map[string]any
+				_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
+
+				inputVal := ""
+				if val, ok := args["input"].(string); ok {
+					inputVal = val
+				} else {
+					inputVal = tc.FunctionCall.Arguments
+				}
+
+				res, err := toolExecutor.Execute(ctx, ToolInvocation{
+					Tool:      tc.FunctionCall.Name,
+					ToolInput: inputVal,
+				})
+				if err != nil {
+					res = fmt.Sprintf("Error: %v", err)
+				}
+
+				toolMsg := llms.MessageContent{
+					Role: llms.ChatMessageTypeTool,
+					Parts: []llms.ContentPart{
+						llms.ToolCallResponse{
+							ToolCallID: tc.ID,
+							Name:       tc.FunctionCall.Name,
+							Content:    res,
+						},
+					},
+				}
+				toolMessages = append(toolMessages, toolMsg)
+			}
+		}
+
+		return setMessages(state, append(getMessages(state), toolMessages...)), nil
+	})
+
+	workflow.SetEntryPoint("agent")
+	workflow.AddConditionalEdge("agent", func(ctx context.Context, state S) string {
+		messages := getMessages(state)
+		lastMsg := messages[len(messages)-1]
+		for _, part := range lastMsg.Parts {
+			if _, ok := part.(llms.ToolCall); ok {
+				return "tools"
+			}
+		}
+		return graph.END
+	})
 	workflow.AddEdge("tools", "agent")
 
 	return workflow.Compile()

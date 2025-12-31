@@ -26,7 +26,7 @@ func ExampleCreateReflectionAgent() {
 	}
 
 	// Create agent
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,7 +92,7 @@ Evaluate the response for:
 Be specific in your feedback.`,
 	}
 
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func ExampleCreateReflectionAgent_customCriteria() {
 Provide specific, actionable feedback.`,
 	}
 
-	agent, err := prebuilt.CreateReflectionAgent(config)
+	agent, err := prebuilt.CreateReflectionAgentMap(config)
 	if err != nil {
 		log.Fatal(err)
 	}

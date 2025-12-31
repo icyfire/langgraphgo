@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// Create a new state graph
-	g := graph.NewStateGraph()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Define Schema
 	// We use a map schema where "results" is a list that accumulates values
@@ -21,88 +21,113 @@ func main() {
 	g.SetSchema(schema)
 
 	// Define Nodes
-	g.AddNode("start", "start", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("start", "start", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("=== Complex Parallel Execution Start ===")
 		fmt.Println("[Start] Initiating fan-out to multiple branches...")
 		return map[string]any{
-			"timestamp": time.Now().Format("15:04:05.000"),
-		}, nil
+				"timestamp": time.Now().Format("15:04:05.000"),
+			},
+			nil
 	})
 
 	// ==== Short Branch (1 node) ====
-	g.AddNode("short_branch", "short_branch", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("short_branch", "short_branch", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("\n[Short Branch] Starting execution...")
 		time.Sleep(100 * time.Millisecond)
 		fmt.Println("[Short Branch] ✓ Completed (fast path)")
 		return map[string]any{
-			"results": []string{"Short branch result"},
-		}, nil
+				"results": []string{"Short branch result"},
+			},
+			nil
 	})
 
 	// ==== Medium Branch (2 nodes) ====
-	g.AddNode("medium_branch_1", "medium_branch_1", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("medium_branch_1", "medium_branch_1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("\n[Medium Branch - Step 1/2] Processing...")
 		time.Sleep(150 * time.Millisecond)
 		fmt.Println("[Medium Branch - Step 1/2] ✓ Completed")
 		return map[string]any{
-			"medium_temp": "intermediate_data",
-		}, nil
+				"medium_temp": "intermediate_data",
+			},
+			nil
 	})
 
-	g.AddNode("medium_branch_2", "medium_branch_2", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("medium_branch_2", "medium_branch_2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Medium Branch - Step 2/2] Processing...")
 		time.Sleep(150 * time.Millisecond)
 		fmt.Println("[Medium Branch - Step 2/2] ✓ Completed")
 		return map[string]any{
-			"results": []string{"Medium branch result (2 steps)"},
-		}, nil
+				"results": []string{"Medium branch result (2 steps)"},
+			},
+			nil
 	})
 
 	// ==== Long Branch (3 nodes) ====
-	g.AddNode("long_branch_1", "long_branch_1", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("long_branch_1", "long_branch_1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("\n[Long Branch - Step 1/3] Initial processing...")
 		time.Sleep(200 * time.Millisecond)
 		fmt.Println("[Long Branch - Step 1/3] ✓ Completed")
 		return map[string]any{
-			"long_temp_1": "data_from_step1",
-		}, nil
+				"long_temp_1": "data_from_step1",
+			},
+			nil
 	})
 
-	g.AddNode("long_branch_2", "long_branch_2", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("long_branch_2", "long_branch_2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Long Branch - Step 2/3] Advanced processing...")
 		time.Sleep(200 * time.Millisecond)
 		fmt.Println("[Long Branch - Step 2/3] ✓ Completed")
 		return map[string]any{
-			"long_temp_2": "data_from_step2",
-		}, nil
+				"long_temp_2": "data_from_step2",
+			},
+			nil
 	})
 
-	g.AddNode("long_branch_3", "long_branch_3", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("long_branch_3", "long_branch_3", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Long Branch - Step 3/3] Final processing...")
 		time.Sleep(200 * time.Millisecond)
 		fmt.Println("[Long Branch - Step 3/3] ✓ Completed")
 		return map[string]any{
-			"results": []string{"Long branch result (3 steps)"},
-		}, nil
+				"results": []string{"Long branch result (3 steps)"},
+			},
+			nil
 	})
 
 	// ==== Aggregator Node ====
-	g.AddNode("aggregator", "aggregator", func(ctx context.Context, state any) (any, error) {
-		mState := state.(map[string]any)
-		results := mState["results"].([]string)
+	g.AddNode("aggregator", "aggregator", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		// results is likely []any due to AppendReducer, we need to assert items
+		// Or if we used []string in previous nodes, it might be []any with string elements?
+		// AppendReducer in graph/schema.go returns []any if current is nil or appends to existing slice.
+		// Since we init with empty slice (untyped? no, we init with []string in map[string]any), AppendReducer should keep it as []string if possible?
+		// Wait, NewMapSchema RegisterReducer("results", AppendReducer).
+		// AppendReducer implementation:
+		// if current is []string, and new is []string, it returns []string.
+		// Let's check state["results"].
+
+		resultsSlice, ok := state["results"].([]string)
+		if !ok {
+			// Try []any
+			if resultsAny, ok := state["results"].([]any); ok {
+				resultsSlice = make([]string, len(resultsAny))
+				for i, v := range resultsAny {
+					resultsSlice[i] = fmt.Sprint(v)
+				}
+			}
+		}
 
 		fmt.Println("\n=== Aggregation Point ===")
 		fmt.Printf("[Aggregator] All branches completed!\n")
-		fmt.Printf("[Aggregator] Collected %d results:\n", len(results))
-		for i, result := range results {
+		fmt.Printf("[Aggregator] Collected %d results:\n", len(resultsSlice))
+		for i, result := range resultsSlice {
 			fmt.Printf("  %d. %s\n", i+1, result)
 		}
 
 		return map[string]any{
-			"status":        "all_branches_completed",
-			"total_results": len(results),
-			"final_message": "Complex parallel execution finished successfully",
-		}, nil
+				"status":        "all_branches_completed",
+				"total_results": len(resultsSlice),
+				"final_message": "Complex parallel execution finished successfully",
+			},
+			nil
 	})
 
 	// ==== Define Graph Structure ====

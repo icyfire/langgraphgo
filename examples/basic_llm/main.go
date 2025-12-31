@@ -3,37 +3,33 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/smallnest/langgraphgo/graph"
-	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 func main() {
-	// Create LLM using LangChain
+	// Initialize LLM
 	model, err := openai.New()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	g := graph.NewStateGraph()
+	g := graph.NewStateGraph[map[string]any]()
 
-	// Add node that uses LangChain LLM
-	g.AddNode("generate", "generate", func(ctx context.Context, state any) (any, error) {
-		messages := state.([]llms.MessageContent)
+	g.AddNode("generate", "generate", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		input, ok := state["input"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid input")
+		}
 
-		// Use LangChain to generate response
-		response, err := model.GenerateContent(ctx, messages,
-			llms.WithTemperature(0.7),
-		)
+		response, err := model.Call(ctx, input)
 		if err != nil {
 			return nil, err
 		}
 
-		// Append AI response to messages
-		return append(messages,
-			llms.TextParts("ai", response.Choices[0].Content),
-		), nil
+		return map[string]any{"output": response}, nil
 	})
 
 	g.AddEdge("generate", graph.END)
@@ -45,15 +41,11 @@ func main() {
 	}
 
 	ctx := context.Background()
-	initialMessages := []llms.MessageContent{
-		llms.TextParts("human", "What is 1 + 1?"),
-	}
-
-	res, err := runnable.Invoke(ctx, initialMessages)
+	// Invoke with map state
+	res, err := runnable.Invoke(ctx, map[string]any{"input": "What is 1 + 1?"})
 	if err != nil {
 		panic(err)
 	}
 
-	messages := res.([]llms.MessageContent)
-	fmt.Println("AI Response:", messages[len(messages)-1].Parts[0])
+	fmt.Println("AI Response:", res["output"])
 }

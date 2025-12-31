@@ -6,20 +6,20 @@ import (
 )
 
 // Subgraph represents a nested graph that can be used as a node
-type Subgraph struct {
+type Subgraph[S any] struct {
 	name     string
-	graph    *StateGraph[map[string]any]
-	runnable *StateRunnable[map[string]any]
+	graph    *StateGraph[S]
+	runnable *StateRunnable[S]
 }
 
-// NewSubgraph creates a new subgraph
-func NewSubgraph(name string, graph *StateGraph[map[string]any]) (*Subgraph, error) {
+// NewSubgraph creates a new generic subgraph
+func NewSubgraph[S any](name string, graph *StateGraph[S]) (*Subgraph[S], error) {
 	runnable, err := graph.Compile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile subgraph %s: %w", name, err)
 	}
 
-	return &Subgraph{
+	return &Subgraph[S]{
 		name:     name,
 		graph:    graph,
 		runnable: runnable,
@@ -27,24 +27,17 @@ func NewSubgraph(name string, graph *StateGraph[map[string]any]) (*Subgraph, err
 }
 
 // Execute runs the subgraph as a node
-func (s *Subgraph) Execute(ctx context.Context, state any) (any, error) {
-	// Convert state to map[string]any if needed
-	var stateMap map[string]any
-	if sm, ok := state.(map[string]any); ok {
-		stateMap = sm
-	} else {
-		stateMap = map[string]any{"state": state}
-	}
-
-	result, err := s.runnable.Invoke(ctx, stateMap)
+func (s *Subgraph[S]) Execute(ctx context.Context, state S) (S, error) {
+	result, err := s.runnable.Invoke(ctx, state)
 	if err != nil {
-		return nil, fmt.Errorf("subgraph %s execution failed: %w", s.name, err)
+		var zero S
+		return zero, fmt.Errorf("subgraph %s execution failed: %w", s.name, err)
 	}
 	return result, nil
 }
 
 // AddSubgraph adds a subgraph as a node in the parent graph
-func AddSubgraph[S any](g *StateGraph[S], name string, subgraph *StateGraph[map[string]any], converter func(S) map[string]any, resultConverter func(map[string]any) S) error {
+func AddSubgraph[S, SubS any](g *StateGraph[S], name string, subgraph *StateGraph[SubS], converter func(S) SubS, resultConverter func(SubS) S) error {
 	sg, err := NewSubgraph(name, subgraph)
 	if err != nil {
 		return err
@@ -52,21 +45,15 @@ func AddSubgraph[S any](g *StateGraph[S], name string, subgraph *StateGraph[map[
 
 	// Wrap the execute function to match the state type
 	wrappedFn := func(ctx context.Context, state S) (S, error) {
-		// Convert S to map[string]any
-		stateMap := converter(state)
-		result, err := sg.Execute(ctx, stateMap)
+		// Convert S to SubS
+		subState := converter(state)
+		result, err := sg.Execute(ctx, subState)
 		if err != nil {
 			var zero S
 			return zero, err
 		}
-		// Execute returns any, need to assert to map[string]any
-		resultMap, ok := result.(map[string]any)
-		if !ok {
-			var zero S
-			return zero, fmt.Errorf("subgraph %s did not return map[string]any", name)
-		}
 		// Convert result back to S
-		return resultConverter(resultMap), nil
+		return resultConverter(result), nil
 	}
 
 	g.AddNode(name, "Subgraph: "+name, wrappedFn)
@@ -74,48 +61,47 @@ func AddSubgraph[S any](g *StateGraph[S], name string, subgraph *StateGraph[map[
 }
 
 // CreateSubgraph creates and adds a subgraph using a builder function
-func CreateSubgraph[S any](g *StateGraph[S], name string, builder func(*StateGraph[map[string]any]) error, converter func(S) map[string]any, resultConverter func(map[string]any) S) {
-	subgraph := NewStateGraph[map[string]any]()
-	builder(subgraph)
-	_ = AddSubgraph(g, name, subgraph, converter, resultConverter)
+func CreateSubgraph[S, SubS any](g *StateGraph[S], name string, builder func(*StateGraph[SubS]) error, converter func(S) SubS, resultConverter func(SubS) S) error {
+	subgraph := NewStateGraph[SubS]()
+	if err := builder(subgraph); err != nil {
+		return err
+	}
+	return AddSubgraph(g, name, subgraph, converter, resultConverter)
 }
 
 // CompositeGraph allows composing multiple graphs together
-type CompositeGraph struct {
-	graphs map[string]*StateGraph[map[string]any]
-	main   *StateGraph[map[string]any]
+type CompositeGraph[S any] struct {
+	graphs map[string]*StateGraph[S]
+	main   *StateGraph[S]
 }
 
 // NewCompositeGraph creates a new composite graph
-func NewCompositeGraph() *CompositeGraph {
-	return &CompositeGraph{
-		graphs: make(map[string]*StateGraph[map[string]any]),
-		main:   NewStateGraph[map[string]any](),
+func NewCompositeGraph[S any]() *CompositeGraph[S] {
+	return &CompositeGraph[S]{
+		graphs: make(map[string]*StateGraph[S]),
+		main:   NewStateGraph[S](),
 	}
 }
 
 // AddGraph adds a named graph to the composite
-func (cg *CompositeGraph) AddGraph(name string, graph *StateGraph[map[string]any]) {
+func (cg *CompositeGraph[S]) AddGraph(name string, graph *StateGraph[S]) {
 	cg.graphs[name] = graph
 }
 
 // Connect connects two graphs with a transformation function
-func (cg *CompositeGraph) Connect(
+func (cg *CompositeGraph[S]) Connect(
 	fromGraph string,
 	fromNode string,
 	toGraph string,
 	toNode string,
-	transform func(any) any,
+	transform func(S) S,
 ) error {
 	// Create a bridge node that transforms state between graphs
 	bridgeName := fmt.Sprintf("%s_%s_to_%s_%s", fromGraph, fromNode, toGraph, toNode)
 
-	cg.main.AddNode(bridgeName, "Bridge: "+bridgeName, func(_ context.Context, state map[string]any) (map[string]any, error) {
+	cg.main.AddNode(bridgeName, "Bridge: "+bridgeName, func(_ context.Context, state S) (S, error) {
 		if transform != nil {
-			result := transform(state)
-			if resultMap, ok := result.(map[string]any); ok {
-				return resultMap, nil
-			}
+			return transform(state), nil
 		}
 		return state, nil
 	})
@@ -124,12 +110,12 @@ func (cg *CompositeGraph) Connect(
 }
 
 // Compile compiles the composite graph into a single runnable
-func (cg *CompositeGraph) Compile() (*StateRunnable[map[string]any], error) {
+func (cg *CompositeGraph[S]) Compile() (*StateRunnable[S], error) {
 	// Add all subgraphs to the main graph
 	for name, graph := range cg.graphs {
 		if err := AddSubgraph(cg.main, name, graph,
-			func(s map[string]any) map[string]any { return s },
-			func(s map[string]any) map[string]any { return s }); err != nil {
+			func(s S) S { return s },
+			func(s S) S { return s }); err != nil {
 			return nil, fmt.Errorf("failed to add subgraph %s: %w", name, err)
 		}
 	}
@@ -138,33 +124,33 @@ func (cg *CompositeGraph) Compile() (*StateRunnable[map[string]any], error) {
 }
 
 // RecursiveSubgraph allows a subgraph to call itself recursively
-type RecursiveSubgraph struct {
+type RecursiveSubgraph[S any] struct {
 	name      string
-	graph     *StateGraph[map[string]any]
+	graph     *StateGraph[S]
 	maxDepth  int
-	condition func(any, int) bool // Should continue recursion?
+	condition func(S, int) bool // Should continue recursion?
 }
 
 // NewRecursiveSubgraph creates a new recursive subgraph
-func NewRecursiveSubgraph(
+func NewRecursiveSubgraph[S any](
 	name string,
 	maxDepth int,
-	condition func(any, int) bool,
-) *RecursiveSubgraph {
-	return &RecursiveSubgraph{
+	condition func(S, int) bool,
+) *RecursiveSubgraph[S] {
+	return &RecursiveSubgraph[S]{
 		name:      name,
-		graph:     NewStateGraph[map[string]any](),
+		graph:     NewStateGraph[S](),
 		maxDepth:  maxDepth,
 		condition: condition,
 	}
 }
 
 // Execute runs the recursive subgraph
-func (rs *RecursiveSubgraph) Execute(ctx context.Context, state any) (any, error) {
+func (rs *RecursiveSubgraph[S]) Execute(ctx context.Context, state S) (S, error) {
 	return rs.executeRecursive(ctx, state, 0)
 }
 
-func (rs *RecursiveSubgraph) executeRecursive(ctx context.Context, state any, depth int) (any, error) {
+func (rs *RecursiveSubgraph[S]) executeRecursive(ctx context.Context, state S, depth int) (S, error) {
 	// Check max depth
 	if depth >= rs.maxDepth {
 		return state, nil
@@ -175,23 +161,17 @@ func (rs *RecursiveSubgraph) executeRecursive(ctx context.Context, state any, de
 		return state, nil
 	}
 
-	// Convert state to map[string]any
-	var stateMap map[string]any
-	if sm, ok := state.(map[string]any); ok {
-		stateMap = sm
-	} else {
-		stateMap = map[string]any{"state": state}
-	}
-
 	// Compile and execute the graph
 	runnable, err := rs.graph.Compile()
 	if err != nil {
-		return nil, fmt.Errorf("failed to compile recursive subgraph at depth %d: %w", depth, err)
+		var zero S
+		return zero, fmt.Errorf("failed to compile recursive subgraph at depth %d: %w", depth, err)
 	}
 
-	result, err := runnable.Invoke(ctx, stateMap)
+	result, err := runnable.Invoke(ctx, state)
 	if err != nil {
-		return nil, fmt.Errorf("recursive execution failed at depth %d: %w", depth, err)
+		var zero S
+		return zero, fmt.Errorf("recursive execution failed at depth %d: %w", depth, err)
 	}
 
 	// Recurse with the result
@@ -199,45 +179,42 @@ func (rs *RecursiveSubgraph) executeRecursive(ctx context.Context, state any, de
 }
 
 // AddRecursiveSubgraph adds a recursive subgraph to the parent graph
-func AddRecursiveSubgraph[S any](
+func AddRecursiveSubgraph[S, SubS any](
 	g *StateGraph[S],
 	name string,
 	maxDepth int,
-	condition func(any, int) bool,
-	builder func(*StateGraph[map[string]any]),
-	converter func(S) map[string]any,
-	resultConverter func(map[string]any) S,
-) {
+	condition func(SubS, int) bool,
+	builder func(*StateGraph[SubS]) error,
+	converter func(S) SubS,
+	resultConverter func(SubS) S,
+) error {
 	rs := NewRecursiveSubgraph(name, maxDepth, condition)
-	builder(rs.graph)
+	if err := builder(rs.graph); err != nil {
+		return err
+	}
 
 	wrappedFn := func(ctx context.Context, state S) (S, error) {
-		stateMap := converter(state)
-		result, err := rs.Execute(ctx, stateMap)
+		subState := converter(state)
+		result, err := rs.Execute(ctx, subState)
 		if err != nil {
 			var zero S
 			return zero, err
 		}
-		// Execute returns any, need to assert to map[string]any
-		resultMap, ok := result.(map[string]any)
-		if !ok {
-			var zero S
-			return zero, fmt.Errorf("recursive subgraph did not return map[string]any")
-		}
-		return resultConverter(resultMap), nil
+		return resultConverter(result), nil
 	}
 
 	g.AddNode(name, "Recursive subgraph: "+name, wrappedFn)
+	return nil
 }
 
-// NestedConditionalSubgraph creates a subgraph with its own conditional routing
-func AddNestedConditionalSubgraph[S any](
+// AddNestedConditionalSubgraph creates a subgraph with its own conditional routing
+func AddNestedConditionalSubgraph[S, SubS any](
 	g *StateGraph[S],
 	name string,
 	router func(S) string,
-	subgraphs map[string]*StateGraph[map[string]any],
-	converter func(S) map[string]any,
-	resultConverter func(map[string]any) S,
+	subgraphs map[string]*StateGraph[SubS],
+	converter func(S) SubS,
+	resultConverter func(SubS) S,
 ) error {
 	// Create a wrapper node that routes to different subgraphs
 	wrappedFn := func(ctx context.Context, state S) (S, error) {
@@ -250,8 +227,8 @@ func AddNestedConditionalSubgraph[S any](
 			return zero, fmt.Errorf("subgraph %s not found", subgraphName)
 		}
 
-		// Convert state to map[string]any
-		stateMap := converter(state)
+		// Convert state to SubS
+		subState := converter(state)
 
 		// Compile and execute the selected subgraph
 		runnable, err := subgraph.Compile()
@@ -260,7 +237,7 @@ func AddNestedConditionalSubgraph[S any](
 			return zero, fmt.Errorf("failed to compile subgraph %s: %w", subgraphName, err)
 		}
 
-		result, err := runnable.Invoke(ctx, stateMap)
+		result, err := runnable.Invoke(ctx, subState)
 		if err != nil {
 			var zero S
 			return zero, err

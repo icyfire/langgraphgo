@@ -19,12 +19,12 @@ func TestRetryNode(t *testing.T) {
 	t.Parallel()
 
 	t.Run("SuccessOnFirstAttempt", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			&graph.RetryConfig{
 				MaxAttempts:   3,
@@ -46,7 +46,8 @@ func TestRetryNode(t *testing.T) {
 			t.Fatalf("Execution failed: %v", err)
 		}
 
-		actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+		actualResult, ok := result["value"]
+		if !ok || actualResult != successResult {
 			t.Errorf("Expected success, got %v", result)
 		}
 
@@ -56,15 +57,15 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("RetryOnTransientFailure", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			count := atomic.AddInt32(&callCount, 1)
 			if count < 3 {
 				return nil, errors.New("transient error")
 			}
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			&graph.RetryConfig{
 				MaxAttempts:   5,
@@ -86,7 +87,8 @@ func TestRetryNode(t *testing.T) {
 			t.Fatalf("Execution failed: %v", err)
 		}
 
-		actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+		actualResult, ok := result["value"]
+		if !ok || actualResult != successResult {
 			t.Errorf("Expected success, got %v", result)
 		}
 
@@ -96,10 +98,10 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("MaxAttemptsExceeded", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
 			return nil, errors.New("persistent error")
 		},
@@ -129,10 +131,10 @@ func TestRetryNode(t *testing.T) {
 	})
 
 	t.Run("NonRetryableError", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRetry("retry_node", "retry_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
 			return nil, errors.New("critical error")
 		},
@@ -171,11 +173,11 @@ func TestTimeoutNode(t *testing.T) {
 	t.Parallel()
 
 	t.Run("SuccessWithinTimeout", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 
-		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			time.Sleep(10 * time.Millisecond)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			100*time.Millisecond,
 		)
@@ -193,17 +195,18 @@ func TestTimeoutNode(t *testing.T) {
 			t.Fatalf("Execution failed: %v", err)
 		}
 
-		actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+		actualResult, ok := result["value"]
+		if !ok || actualResult != successResult {
 			t.Errorf("Expected success, got %v", result)
 		}
 	})
 
 	t.Run("TimeoutExceeded", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 
-		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			time.Sleep(100 * time.Millisecond)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			20*time.Millisecond,
 		)
@@ -223,14 +226,14 @@ func TestTimeoutNode(t *testing.T) {
 	})
 
 	t.Run("RespectContextCancellation", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 
-		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, _ any) (any, error) {
+		g.AddNodeWithTimeout("timeout_node", "timeout_node", func(ctx context.Context, _ map[string]any) (map[string]any, error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-time.After(100 * time.Millisecond):
-				return successResult, nil
+				return map[string]any{"value": successResult}, nil
 			}
 		},
 			200*time.Millisecond,
@@ -258,10 +261,10 @@ func TestCircuitBreaker(t *testing.T) {
 	t.Parallel()
 
 	t.Run("CircuitOpensAfterFailures", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
 			return nil, errors.New("service unavailable")
 		},
@@ -300,16 +303,16 @@ func TestCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("CircuitClosesAfterSuccess", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithCircuitBreaker("cb_node", "cb_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			count := atomic.AddInt32(&callCount, 1)
 			// Fail first 2 calls, succeed afterwards
 			if count <= 2 {
 				return nil, errors.New("service unavailable")
 			}
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			graph.CircuitBreakerConfig{
 				FailureThreshold: 2,
@@ -340,7 +343,8 @@ func TestCircuitBreaker(t *testing.T) {
 			t.Fatalf("Expected success after circuit recovery: %v", err)
 		}
 
-		actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+		actualResult, ok := result["value"]
+		if !ok || actualResult != successResult {
 			t.Errorf("Expected success, got %v", result)
 		}
 	})
@@ -351,12 +355,12 @@ func TestRateLimiter(t *testing.T) {
 	t.Parallel()
 
 	t.Run("AllowsCallsWithinLimit", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			3,
 			100*time.Millisecond,
@@ -376,7 +380,8 @@ func TestRateLimiter(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Call %d failed: %v", i+1, err)
 			}
-			actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+			actualResult, ok := result["value"]
+			if !ok || actualResult != successResult {
 				t.Errorf("Expected success, got %v", result)
 			}
 		}
@@ -387,12 +392,12 @@ func TestRateLimiter(t *testing.T) {
 	})
 
 	t.Run("BlocksCallsExceedingLimit", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			2,
 			100*time.Millisecond,
@@ -422,12 +427,12 @@ func TestRateLimiter(t *testing.T) {
 	})
 
 	t.Run("AllowsCallsAfterWindowExpires", func(t *testing.T) {
-		g := graph.NewStateGraphUntyped()
+		g := graph.NewStateGraph[map[string]any]()
 		callCount := int32(0)
 
-		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state any) (any, error) {
+		g.AddNodeWithRateLimit("rate_limited", "rate_limited", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			atomic.AddInt32(&callCount, 1)
-			return successResult, nil
+			return map[string]any{"value": successResult}, nil
 		},
 			2,
 			50*time.Millisecond,
@@ -454,7 +459,8 @@ func TestRateLimiter(t *testing.T) {
 			t.Fatalf("Call after window expiry failed: %v", err)
 		}
 
-		actualResult, ok := result["value"]; if !ok || actualResult != successResult {
+		actualResult, ok := result["value"]
+		if !ok || actualResult != successResult {
 			t.Errorf("Expected success, got %v", result)
 		}
 

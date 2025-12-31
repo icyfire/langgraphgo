@@ -3,56 +3,57 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-// This example demonstrates Subgraphs (Composition).
-// We create a "Child" graph and use it as a node in a "Parent" graph.
-
 func main() {
-	// 1. Define Child Graph
-	child := graph.NewStateGraph()
-	child.AddNode("child_process", "child_process", func(ctx context.Context, state any) (any, error) {
-		m := state.(map[string]any)
-		m["child_trace"] = "visited"
-		return m, nil
+	// 1. Create a child graph
+	child := graph.NewStateGraph[map[string]any]()
+	child.AddNode("child_process", "child_process", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["child_visited"] = true
+		return state, nil
 	})
 	child.SetEntryPoint("child_process")
 	child.AddEdge("child_process", graph.END)
 
-	// 2. Define Parent Graph
-	parent := graph.NewStateGraph()
-	parent.AddNode("start", "start", func(ctx context.Context, state any) (any, error) {
-		return map[string]any{"parent_trace": "started"}, nil
+	// 2. Create parent graph
+	parent := graph.NewStateGraph[map[string]any]()
+
+	parent.AddNode("start", "start", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["parent_start"] = true
+		return state, nil
 	})
 
-	// Add Child Graph as a node named "nested_graph"
-	if err := parent.AddSubgraph("nested_graph", child); err != nil {
-		log.Fatal(err)
+	// Add child graph as a node
+	// Note: Generic AddSubgraph requires converters.
+	// Since both are map[string]any, we use identity.
+	err := graph.AddSubgraph(parent, "child_graph", child,
+		func(s map[string]any) map[string]any { return s },
+		func(s map[string]any) map[string]any { return s })
+	if err != nil {
+		panic(err)
 	}
 
-	parent.AddNode("end", "end", func(ctx context.Context, state any) (any, error) {
-		return map[string]any{"parent_trace": "ended"}, nil
+	parent.AddNode("end", "end", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["parent_end"] = true
+		return state, nil
 	})
 
 	parent.SetEntryPoint("start")
-	parent.AddEdge("start", "nested_graph")
-	parent.AddEdge("nested_graph", "end")
+	parent.AddEdge("start", "child_graph")
+	parent.AddEdge("child_graph", "end")
 	parent.AddEdge("end", graph.END)
 
-	// 3. Compile and Run
 	runnable, err := parent.Compile()
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	res, err := runnable.Invoke(context.Background(), map[string]any{})
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	fmt.Printf("Final State: %v\n", res)
-	// Expected: Contains traces from both parent and child
+	fmt.Printf("Result: %v\n", res)
 }

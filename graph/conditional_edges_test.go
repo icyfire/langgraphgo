@@ -22,7 +22,7 @@ func TestConditionalEdges(t *testing.T) {
 	}{
 		{
 			name: "Simple conditional routing based on content",
-			buildGraph: func() *graph.StateGraph[map[string]any]{
+			buildGraph: func() *graph.StateGraph[map[string]any] {
 				g := graph.NewStateGraph[map[string]any]()
 
 				// Add nodes
@@ -74,7 +74,7 @@ func TestConditionalEdges(t *testing.T) {
 		},
 		{
 			name: "Conditional routing to general path",
-			buildGraph: func() *graph.StateGraph[map[string]any]{
+			buildGraph: func() *graph.StateGraph[map[string]any] {
 				g := graph.NewStateGraph[map[string]any]()
 
 				g.AddNode("start", "start", func(ctx context.Context, state map[string]any) (map[string]any, error) {
@@ -123,7 +123,7 @@ func TestConditionalEdges(t *testing.T) {
 		},
 		{
 			name: "Multi-level conditional routing",
-			buildGraph: func() *graph.StateGraph[map[string]any]{
+			buildGraph: func() *graph.StateGraph[map[string]any] {
 				g := graph.NewStateGraph[map[string]any]()
 
 				g.AddNode("router", "router", func(ctx context.Context, state map[string]any) (map[string]any, error) {
@@ -173,7 +173,7 @@ func TestConditionalEdges(t *testing.T) {
 		},
 		{
 			name: "Conditional edge to END",
-			buildGraph: func() *graph.StateGraph[map[string]any]{
+			buildGraph: func() *graph.StateGraph[map[string]any] {
 				g := graph.NewStateGraph[map[string]any]()
 
 				g.AddNode("check", "check", func(ctx context.Context, state map[string]any) (map[string]any, error) {

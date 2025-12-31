@@ -26,7 +26,6 @@ func main() {
 	ctx := context.Background()
 
 	// 1. Initialize the LLM
-	// Using deepseek-v3 as preferred, but works with any OpenAI-compatible model
 	llm, err := openai.New()
 	if err != nil {
 		log.Fatalf("Failed to create LLM: %v", err)
@@ -42,9 +41,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// 3. Create the ReAct Agent
-	// The agent will use the LLM to decide when to call the tool
-	agent, err := prebuilt.CreateReactAgent(llm, []tools.Tool{braveTool}, 20)
+	// 3. Create the ReAct Agent using map state convenience function
+	agent, err := prebuilt.CreateReactAgentMap(llm, []tools.Tool{braveTool}, 20)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
@@ -66,15 +64,13 @@ func main() {
 	}
 
 	// 5. Print the Result
-	// The response contains the final state, which includes the conversation history
-	if state, ok := response.(map[string]any); ok {
-		if messages, ok := state["messages"].([]llms.MessageContent); ok {
-			// The last message should be the AI's final answer
-			lastMsg := messages[len(messages)-1]
-			for _, part := range lastMsg.Parts {
-				if text, ok := part.(llms.TextContent); ok {
-					fmt.Printf("\nAgent: %s\n", text.Text)
-				}
+	messages, ok := response["messages"].([]llms.MessageContent)
+	if ok {
+		// The last message should be the AI's final answer
+		lastMsg := messages[len(messages)-1]
+		for _, part := range lastMsg.Parts {
+			if text, ok := part.(llms.TextContent); ok {
+				fmt.Printf("\nAgent: %s\n", text.Text)
 			}
 		}
 	}

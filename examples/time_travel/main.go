@@ -4,50 +4,38 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-// This example demonstrates "Time Travel" / Human-in-the-loop (HITL) workflow.
-// We run a graph, interrupt it, update the state manually, and resume.
-
 func main() {
-	// 1. Setup Checkpointable Graph
-	g := graph.NewCheckpointableStateGraph()
+	// Create a checkpointable graph
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
-	// Schema with integer reducer
-	schema := graph.NewMapSchema()
-	schema.RegisterReducer("count", func(curr, new any) (any, error) {
-		if curr == nil {
-			return new, nil
-		}
-		return curr.(int) + new.(int), nil
-	})
-	g.SetSchema(schema)
-
-	// Node A: Adds 1
-	g.AddNode("A", "A", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("Node A executing...")
-		return map[string]any{"count": 1}, nil
+	// 1. Initial State Node
+	g.AddNode("A", "A", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		fmt.Println("Executing Node A")
+		return map[string]any{"trace": []string{"A"}}, nil
 	})
 
-	// Node B: Adds 10
-	g.AddNode("B", "B", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("Node B executing...")
-		return map[string]any{"count": 10}, nil
+	// 2. Second Node
+	g.AddNode("B", "B", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		fmt.Println("Executing Node B")
+		trace := state["trace"].([]string)
+		return map[string]any{"trace": append(trace, "B")}, nil
 	})
 
 	g.SetEntryPoint("A")
 	g.AddEdge("A", "B")
 	g.AddEdge("B", graph.END)
 
-	// Configure interrupt before B
-	config := &graph.Config{
-		InterruptBefore: []string{"B"},
-		Configurable: map[string]any{
-			"thread_id": "thread_1",
-		},
-	}
+	// Configure in-memory store
+	store := graph.NewMemoryCheckpointStore()
+	g.SetCheckpointConfig(graph.CheckpointConfig{
+		Store:    store,
+		AutoSave: true,
+	})
 
 	runnable, err := g.CompileCheckpointable()
 	if err != nil {
@@ -56,59 +44,68 @@ func main() {
 
 	ctx := context.Background()
 
-	// 2. Run Initial (Interrupts before B)
-	fmt.Println("--- Run 1 (Start) ---")
-	res, err := runnable.InvokeWithConfig(ctx, map[string]any{"count": 0}, config)
-	// Expect interrupt error or partial result?
-	// Invoke returns state at interrupt.
-	// Note: Invoke returns (state, error). If interrupted, error is GraphInterrupt.
+	// Run first time
+	fmt.Println("--- First Run ---")
+	res, err := runnable.Invoke(ctx, map[string]any{"input": "start"})
 	if err != nil {
-		if _, ok := err.(*graph.GraphInterrupt); ok {
-			fmt.Println("Graph Interrupted as expected.")
-		} else {
-			log.Fatal(err)
+		log.Fatal(err)
+	}
+	fmt.Printf("Result 1: %v\n", res)
+
+	// Wait for async saves
+	time.Sleep(100 * time.Millisecond)
+
+	// List checkpoints
+	checkpoints, _ := runnable.ListCheckpoints(ctx)
+	if len(checkpoints) == 0 {
+		log.Fatal("No checkpoints found")
+	}
+
+	// "Time Travel": Load a previous checkpoint (e.g. after Node A)
+	// We want to find the checkpoint where NodeName is "A"
+	var targetCP *graph.Checkpoint
+	for _, cp := range checkpoints {
+		if cp.NodeName == "A" {
+			targetCP = cp
+			break
 		}
 	}
-	fmt.Printf("State at Interrupt: %v\n", res) // Should be count=1 (0+1)
 
-	// 3. Update State (Human Intervention)
-	// We decide to change the count to 100 before B runs.
-	fmt.Println("\n--- Human Update ---")
-	// UpdateState merges. We want to set it to 100.
-	// Since our reducer adds, if we pass 99, 1+99=100.
-	// Or if we want to OVERWRITE, we need a different reducer or schema logic.
-	// For this example, let's just add 50.
-	newConfig, err := runnable.UpdateState(ctx, config, map[string]any{"count": 50}, "human")
-	if err != nil {
-		log.Fatal(err)
+	if targetCP != nil {
+		fmt.Println("\n--- Time Travel (Resuming from Node A) ---")
+		// Resume execution from this checkpoint
+		// ResumeFromCheckpoint loads the state.
+		// To continue execution, we usually need to know where to go next.
+		// Or if we just want to inspect state.
+		// If we want to branch off:
+		// We use InvokeWithConfig with ResumeFrom (this logic is app specific usually)
+
+		// But here let's just inspect
+		loadedState, err := runnable.LoadCheckpoint(ctx, targetCP.ID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Traveled back to state after Node A: %v\n", loadedState.State)
+
+		// Branch off: Run Node B again but with modified state?
+		// Or just re-run B.
+		config := &graph.Config{
+			Configurable: map[string]any{
+				"thread_id":     runnable.GetExecutionID(),
+				"checkpoint_id": targetCP.ID,
+			},
+			ResumeFrom: []string{"B"},
+		}
+
+		// Let's modify state "in place" conceptually (forking)
+		// by passing modified state to Invoke
+		forkedState := loadedState.State.(map[string]any)
+		forkedState["forked"] = true
+
+		resFork, err := runnable.InvokeWithConfig(ctx, forkedState, config)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Forked Result: %v\n", resFork)
 	}
-	fmt.Println("State Updated. New Checkpoint created.")
-
-	// 4. Resume Execution
-	// We resume from the new checkpoint.
-	// Note: We need to clear InterruptBefore to let it proceed, or use ResumeFrom?
-	// If we just Invoke with new config (pointing to new checkpoint), it should continue?
-	// But we need to tell it to start at B?
-	// The checkpoint knows "Next" nodes? Currently our Checkpoint struct doesn't store Next nodes explicitly.
-	// But `Invoke` logic determines next nodes from current.
-	// If we resume, we usually need to specify `ResumeFrom` or rely on saved state.
-	// For now, let's use `ResumeFrom` = "B".
-
-	resumeConfig := &graph.Config{
-		Configurable: newConfig.Configurable, // Use the checkpoint ID from UpdateState
-		ResumeFrom:   []string{"B"},
-	}
-
-	fmt.Println("\n--- Run 2 (Resume) ---")
-	finalRes, err := runnable.InvokeWithConfig(ctx, nil, resumeConfig) // State loaded from checkpoint
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Final result should be:
-	// Initial: 0
-	// A: +1 -> 1
-	// Update: +50 -> 51
-	// B: +10 -> 61
-	fmt.Printf("Final Result: %v\n", finalRes)
 }

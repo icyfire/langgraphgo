@@ -27,6 +27,7 @@ func main() {
 	defer mcpClient.Close()
 
 	// 2. Convert MCP tools to langchaingo tools
+
 	tools, err := mcp.MCPToTools(ctx, mcpClient)
 	if err != nil {
 		log.Fatalf("Failed to get MCP tools: %v\n", err)
@@ -48,8 +49,8 @@ func main() {
 		log.Fatalf("Failed to create LLM: %v\n", err)
 	}
 
-	// 4. Create agent with MCP tools
-	agent, err := prebuilt.CreateAgent(
+	// 4. Create agent with MCP tools using CreateAgentMap
+	agent, err := prebuilt.CreateAgentMap(
 		llm,
 		tools,
 		prebuilt.WithSystemMessage("You are a helpful assistant with access to various tools through MCP. Use them to help answer questions."),
@@ -75,10 +76,9 @@ func main() {
 	}
 
 	// 6. Print the result
-	if mState, ok := result.(map[string]any); ok {
-		if messages, ok := mState["messages"]; ok {
-			fmt.Printf("\nAgent messages:\n%+v\n", messages)
-		}
+	// Result is map[string]any
+	if messages, ok := result["messages"]; ok {
+		fmt.Printf("\nAgent messages:\n%+v\n", messages)
 	} else {
 		fmt.Printf("\nAgent result:\n%+v\n", result)
 	}

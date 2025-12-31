@@ -5,6 +5,24 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
+// AgentState represents the general agent state.
+// This is the default state type for generic agents.
+type AgentState struct {
+	// Messages contains the conversation history
+	Messages []llms.MessageContent
+
+	// ExtraTools contains additional tools available to the agent
+	ExtraTools []tools.Tool
+}
+
+// ReactAgentState represents the default state for a ReAct agent
+type ReactAgentState struct {
+	// Messages contains the conversation history
+	Messages []llms.MessageContent `json:"messages"`
+	// IterationCount counts the current iteration number
+	IterationCount int `json:"iteration_count"`
+}
+
 // PlanningAgentState represents the state for a planning agent.
 // The planning agent first generates a workflow plan using LLM,
 // then executes according to the generated plan.
@@ -14,6 +32,25 @@ type PlanningAgentState struct {
 
 	// WorkflowPlan contains the parsed workflow plan from LLM
 	WorkflowPlan *WorkflowPlan
+}
+
+// WorkflowPlan represents the parsed workflow plan from LLM
+type WorkflowPlan struct {
+	Nodes []WorkflowNode `json:"nodes"`
+	Edges []WorkflowEdge `json:"edges"`
+}
+
+// WorkflowNode represents a node in the workflow plan
+type WorkflowNode struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // "start", "process", "end", "conditional"
+}
+
+// WorkflowEdge represents an edge in the workflow plan
+type WorkflowEdge struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Condition string `json:"condition,omitempty"` // For conditional edges
 }
 
 // ReflectionAgentState represents the state for a reflection agent.
@@ -91,12 +128,10 @@ type ChatAgentState struct {
 	ExtraTools []tools.Tool
 }
 
-// AgentState represents the general agent state.
-// This is the default state type for generic agents.
-type AgentState struct {
+// SupervisorState represents the state for a supervisor workflow
+type SupervisorState struct {
 	// Messages contains the conversation history
-	Messages []llms.MessageContent
-
-	// ExtraTools contains additional tools available to the agent
-	ExtraTools []tools.Tool
+	Messages []llms.MessageContent `json:"messages"`
+	// Next is the next worker to act
+	Next string `json:"next,omitempty"`
 }

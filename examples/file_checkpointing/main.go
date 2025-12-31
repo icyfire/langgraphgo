@@ -27,21 +27,19 @@ func main() {
 	}
 
 	// Define a simple graph
-	g := graph.NewCheckpointableStateGraph()
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
 	// Add nodes that update state
-	g.AddNode("first", "first", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("first", "first", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("Executing 'first' node")
-		m := state.(map[string]any)
-		m["step1"] = "completed"
-		return m, nil
+		state["step1"] = "completed"
+		return state, nil
 	})
 
-	g.AddNode("second", "second", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("second", "second", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("Executing 'second' node")
-		m := state.(map[string]any)
-		m["step2"] = "completed"
-		return m, nil
+		state["step2"] = "completed"
+		return state, nil
 	})
 
 	g.AddEdge("first", "second")

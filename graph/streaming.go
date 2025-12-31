@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -47,12 +46,12 @@ func DefaultStreamConfig() StreamConfig {
 }
 
 // StreamResult contains the channels returned by streaming execution
-type StreamResult struct {
+type StreamResult[S any] struct {
 	// Events channel receives StreamEvent objects in real-time
-	Events <-chan StreamEvent
+	Events <-chan StreamEvent[S]
 
 	// Result channel receives the final result when execution completes
-	Result <-chan any
+	Result <-chan S
 
 	// Errors channel receives any errors that occur during execution
 	Errors <-chan error
@@ -65,8 +64,8 @@ type StreamResult struct {
 }
 
 // StreamingListener implements NodeListener for streaming events
-type StreamingListener struct {
-	eventChan chan<- StreamEvent
+type StreamingListener[S any] struct {
+	eventChan chan<- StreamEvent[S]
 	config    StreamConfig
 	mutex     sync.RWMutex
 
@@ -75,15 +74,15 @@ type StreamingListener struct {
 }
 
 // NewStreamingListener creates a new streaming listener
-func NewStreamingListener(eventChan chan<- StreamEvent, config StreamConfig) *StreamingListener {
-	return &StreamingListener{
+func NewStreamingListener[S any](eventChan chan<- StreamEvent[S], config StreamConfig) *StreamingListener[S] {
+	return &StreamingListener[S]{
 		eventChan: eventChan,
 		config:    config,
 	}
 }
 
 // emitEvent sends an event to the channel handling backpressure
-func (sl *StreamingListener) emitEvent(event StreamEvent) {
+func (sl *StreamingListener[S]) emitEvent(event StreamEvent[S]) {
 	// Check if listener is closed
 	sl.mutex.RLock()
 	if sl.closed {
@@ -110,23 +109,21 @@ func (sl *StreamingListener) emitEvent(event StreamEvent) {
 	}
 }
 
-func (sl *StreamingListener) shouldEmit(event StreamEvent) bool {
+func (sl *StreamingListener[S]) shouldEmit(event StreamEvent[S]) bool {
 	switch sl.config.Mode {
 	case StreamModeDebug:
 		return true
 	case StreamModeValues:
 		// Only emit OnGraphStep events (which contain full state)
-		// We use a custom event type for this?
-		// Currently OnGraphStep calls emitEvent with what?
-		// We need to implement OnGraphStep in StreamingListener.
-		// For now, let's assume OnGraphStep emits a special event.
-		// If event.Event == "graph_step", return true.
-		return event.Event == "graph_step"
+		// We expect a custom event type or we rely on node complete if it returns full state?
+		// For now, emit everything that looks like a state update
+		return event.Event == NodeEventComplete || event.Event == EventChainEnd
 	case StreamModeUpdates:
-		// Emit node outputs (ToolEnd, ChainEnd, NodeEventComplete)
-		return event.Event == EventToolEnd || event.Event == EventChainEnd || event.Event == NodeEventComplete
+		// Emit node outputs
+		return event.Event == NodeEventComplete || event.Event == EventChainEnd
 	case StreamModeMessages:
-		// Emit LLM events
+		// Emit LLM events - this is tricky because generic S doesn't imply LLM events
+		// But if the event metadata says it's LLM...
 		return event.Event == EventLLMEnd || event.Event == EventLLMStart
 	default:
 		return true
@@ -134,8 +131,8 @@ func (sl *StreamingListener) shouldEmit(event StreamEvent) bool {
 }
 
 // OnNodeEvent implements the NodeListener interface
-func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, state any, err error) {
-	streamEvent := StreamEvent{
+func (sl *StreamingListener[S]) OnNodeEvent(ctx context.Context, event NodeEvent, nodeName string, state S, err error) {
+	streamEvent := StreamEvent[S]{
 		Timestamp: time.Now(),
 		NodeName:  nodeName,
 		Event:     event,
@@ -146,163 +143,52 @@ func (sl *StreamingListener) OnNodeEvent(_ context.Context, event NodeEvent, nod
 	sl.emitEvent(streamEvent)
 }
 
-// CallbackHandler implementation
-
-func (sl *StreamingListener) OnChainStart(ctx context.Context, serialized map[string]any, inputs map[string]any, runID string, parentRunID *string, tags []string, metadata map[string]any) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventChainStart,
-		Metadata:  metadata,
-		State:     inputs,
-	})
-}
-
-// streamingListenerTypedAdapter wraps StreamingListener to implement NodeListenerTyped[map[string]any]
-type streamingListenerTypedAdapter struct {
-	*StreamingListener
-}
-
-// OnNodeEvent implements NodeListenerTyped[map[string]any]
-func (a *streamingListenerTypedAdapter) OnNodeEvent(ctx context.Context, event NodeEvent, nodeName string, state map[string]any, err error) {
-	// Call the untyped OnNodeEvent method
-	a.StreamingListener.OnNodeEvent(ctx, event, nodeName, state, err)
-}
-
-func (sl *StreamingListener) OnChainEnd(ctx context.Context, outputs map[string]any, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventChainEnd,
-		State:     outputs,
-	})
-}
-
-func (sl *StreamingListener) OnChainError(ctx context.Context, err error, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     NodeEventError, // Or specific ChainError?
-		Error:     err,
-	})
-}
-
-func (sl *StreamingListener) OnLLMStart(ctx context.Context, serialized map[string]any, prompts []string, runID string, parentRunID *string, tags []string, metadata map[string]any) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventLLMStart,
-		Metadata:  metadata,
-		State:     prompts,
-	})
-}
-
-func (sl *StreamingListener) OnLLMEnd(ctx context.Context, response any, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventLLMEnd,
-		State:     response,
-	})
-}
-
-func (sl *StreamingListener) OnLLMError(ctx context.Context, err error, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     NodeEventError,
-		Error:     err,
-	})
-}
-
-func (sl *StreamingListener) OnToolStart(ctx context.Context, serialized map[string]any, inputStr string, runID string, parentRunID *string, tags []string, metadata map[string]any) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventToolStart,
-		Metadata:  metadata,
-		State:     inputStr,
-	})
-}
-
-func (sl *StreamingListener) OnToolEnd(ctx context.Context, output string, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     EventToolEnd,
-		State:     output,
-	})
-}
-
-func (sl *StreamingListener) OnToolError(ctx context.Context, err error, runID string) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     NodeEventError,
-		Error:     err,
-	})
-}
-
-func (sl *StreamingListener) OnRetrieverStart(ctx context.Context, serialized map[string]any, query string, runID string, parentRunID *string, tags []string, metadata map[string]any) {
-	// Map to custom or tool event?
-}
-
-func (sl *StreamingListener) OnRetrieverEnd(ctx context.Context, documents []any, runID string) {
-}
-
-func (sl *StreamingListener) OnRetrieverError(ctx context.Context, err error, runID string) {
-}
-
-// OnGraphStep implements GraphCallbackHandler
-func (sl *StreamingListener) OnGraphStep(ctx context.Context, stepNode string, state any) {
-	sl.emitEvent(StreamEvent{
-		Timestamp: time.Now(),
-		Event:     "graph_step", // Custom event type
-		NodeName:  stepNode,
-		State:     state,
-	})
-}
-
 // Close marks the listener as closed to prevent sending to closed channels
-func (sl *StreamingListener) Close() {
+func (sl *StreamingListener[S]) Close() {
 	sl.mutex.Lock()
 	defer sl.mutex.Unlock()
 	sl.closed = true
 }
 
 // handleBackpressure manages channel backpressure
-func (sl *StreamingListener) handleBackpressure() {
+func (sl *StreamingListener[S]) handleBackpressure() {
 	sl.mutex.Lock()
 	defer sl.mutex.Unlock()
 
 	sl.droppedEvents++
-
-	// Could implement more sophisticated backpressure strategies here
-	// For now, we just track dropped events
 }
 
 // GetDroppedEventsCount returns the number of dropped events
-func (sl *StreamingListener) GetDroppedEventsCount() int {
+func (sl *StreamingListener[S]) GetDroppedEventsCount() int {
 	sl.mutex.RLock()
 	defer sl.mutex.RUnlock()
 	return sl.droppedEvents
 }
 
 // StreamingRunnable wraps a ListenableRunnable with streaming capabilities
-type StreamingRunnable struct {
-	runnable *ListenableRunnable
+type StreamingRunnable[S any] struct {
+	runnable *ListenableRunnable[S]
 	config   StreamConfig
 }
 
 // NewStreamingRunnable creates a new streaming runnable
-func NewStreamingRunnable(runnable *ListenableRunnable, config StreamConfig) *StreamingRunnable {
-	return &StreamingRunnable{
+func NewStreamingRunnable[S any](runnable *ListenableRunnable[S], config StreamConfig) *StreamingRunnable[S] {
+	return &StreamingRunnable[S]{
 		runnable: runnable,
 		config:   config,
 	}
 }
 
 // NewStreamingRunnableWithDefaults creates a streaming runnable with default config
-func NewStreamingRunnableWithDefaults(runnable *ListenableRunnable) *StreamingRunnable {
+func NewStreamingRunnableWithDefaults[S any](runnable *ListenableRunnable[S]) *StreamingRunnable[S] {
 	return NewStreamingRunnable(runnable, DefaultStreamConfig())
 }
 
 // Stream executes the graph with real-time event streaming
-func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *StreamResult {
+func (sr *StreamingRunnable[S]) Stream(ctx context.Context, initialState S) *StreamResult[S] {
 	// Create channels
-	eventChan := make(chan StreamEvent, sr.config.BufferSize)
-	resultChan := make(chan any, 1)
+	eventChan := make(chan StreamEvent[S], sr.config.BufferSize)
+	resultChan := make(chan S, 1)
 	errorChan := make(chan error, 1)
 	doneChan := make(chan struct{})
 
@@ -312,13 +198,9 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *Stre
 	// Create streaming listener
 	streamingListener := NewStreamingListener(eventChan, sr.config)
 
-	// Wrap the listener to implement NodeListenerTyped[map[string]any]
-	typedAdapter := &streamingListenerTypedAdapter{StreamingListener: streamingListener}
-
 	// Add the streaming listener to all nodes
-	for _, node := range sr.runnable.listenableNodes {
-		node.AddListener(typedAdapter)
-	}
+	// We add it globally using the graph
+	sr.runnable.GetListenableGraph().AddGlobalListener(streamingListener)
 
 	// Execute in goroutine
 	go func() {
@@ -326,10 +208,8 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *Stre
 			// First, close the streaming listener to prevent new events
 			streamingListener.Close()
 
-			// Clean up: remove typed adapter from all nodes
-			for _, node := range sr.runnable.listenableNodes {
-				node.RemoveListenerByFunc(typedAdapter)
-			}
+			// Clean up: remove listener
+			sr.runnable.GetListenableGraph().RemoveGlobalListener(streamingListener)
 
 			// Give a small delay for any in-flight listener calls to complete
 			time.Sleep(10 * time.Millisecond)
@@ -341,26 +221,8 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *Stre
 			close(doneChan)
 		}()
 
-		// Create config with streaming listener as callback
-		config := &Config{
-			Callbacks: []CallbackHandler{streamingListener},
-		}
-
-		// Convert initialState to map[string]any for the typed runnable
-		var stateMap map[string]any
-		if initialState != nil {
-			if m, ok := initialState.(map[string]any); ok {
-				stateMap = m
-			} else {
-				errorChan <- fmt.Errorf("initialState must be map[string]any, got %T", initialState)
-				return
-			}
-		} else {
-			stateMap = make(map[string]any)
-		}
-
 		// Execute the runnable
-		result, err := sr.runnable.InvokeWithConfig(streamCtx, stateMap, config)
+		result, err := sr.runnable.Invoke(streamCtx, initialState)
 
 		// Send result or error
 		if err != nil {
@@ -376,7 +238,7 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *Stre
 		}
 	}()
 
-	return &StreamResult{
+	return &StreamResult[S]{
 		Events: eventChan,
 		Result: resultChan,
 		Errors: errorChan,
@@ -385,30 +247,32 @@ func (sr *StreamingRunnable) Stream(ctx context.Context, initialState any) *Stre
 	}
 }
 
-// StreamingStateGraph extends ListenableStateGraphUntyped with streaming capabilities
-type StreamingStateGraph struct {
-	*ListenableStateGraphUntyped
+// StreamingStateGraph[S any] extends ListenableStateGraph[S] with streaming capabilities
+type StreamingStateGraph[S any] struct {
+	*ListenableStateGraph[S]
 	config StreamConfig
 }
 
-// NewStreamingStateGraph creates a new streaming message graph
-func NewStreamingStateGraph() *StreamingStateGraph {
-	return &StreamingStateGraph{
-		ListenableStateGraphUntyped: NewListenableStateGraphUntyped(),
-		config:                     DefaultStreamConfig(),
+// NewStreamingStateGraph creates a new streaming state graph with type parameter
+func NewStreamingStateGraph[S any]() *StreamingStateGraph[S] {
+	baseGraph := NewListenableStateGraph[S]()
+	return &StreamingStateGraph[S]{
+		ListenableStateGraph: baseGraph,
+		config:               DefaultStreamConfig(),
 	}
 }
 
 // NewStreamingStateGraphWithConfig creates a streaming graph with custom config
-func NewStreamingStateGraphWithConfig(config StreamConfig) *StreamingStateGraph {
-	return &StreamingStateGraph{
-		ListenableStateGraphUntyped: NewListenableStateGraphUntyped(),
-		config:                     config,
+func NewStreamingStateGraphWithConfig[S any](config StreamConfig) *StreamingStateGraph[S] {
+	baseGraph := NewListenableStateGraph[S]()
+	return &StreamingStateGraph[S]{
+		ListenableStateGraph: baseGraph,
+		config:               config,
 	}
 }
 
 // CompileStreaming compiles the graph into a streaming runnable
-func (g *StreamingStateGraph) CompileStreaming() (*StreamingRunnable, error) {
+func (g *StreamingStateGraph[S]) CompileStreaming() (*StreamingRunnable[S], error) {
 	listenableRunnable, err := g.CompileListenable()
 	if err != nil {
 		return nil, err
@@ -418,41 +282,39 @@ func (g *StreamingStateGraph) CompileStreaming() (*StreamingRunnable, error) {
 }
 
 // SetStreamConfig updates the streaming configuration
-func (g *StreamingStateGraph) SetStreamConfig(config StreamConfig) {
+func (g *StreamingStateGraph[S]) SetStreamConfig(config StreamConfig) {
 	g.config = config
 }
 
 // GetStreamConfig returns the current streaming configuration
-func (g *StreamingStateGraph) GetStreamConfig() StreamConfig {
+func (g *StreamingStateGraph[S]) GetStreamConfig() StreamConfig {
 	return g.config
 }
 
-// StreamingExecutor provides a high-level interface for streaming execution
-type StreamingExecutor struct {
-	runnable *StreamingRunnable
+// StreamingExecutor[S] provides a high-level interface for streaming execution
+type StreamingExecutor[S any] struct {
+	runnable *StreamingRunnable[S]
 }
 
 // NewStreamingExecutor creates a new streaming executor
-func NewStreamingExecutor(runnable *StreamingRunnable) *StreamingExecutor {
-	return &StreamingExecutor{
+func NewStreamingExecutor[S any](runnable *StreamingRunnable[S]) *StreamingExecutor[S] {
+	return &StreamingExecutor[S]{
 		runnable: runnable,
 	}
 }
 
 // ExecuteWithCallback executes the graph and calls the callback for each event
-//
-//nolint:cyclop // Complex streaming logic requires multiple conditional paths
-func (se *StreamingExecutor) ExecuteWithCallback(
+func (se *StreamingExecutor[S]) ExecuteWithCallback(
 	ctx context.Context,
-	initialState any,
-	eventCallback func(event StreamEvent),
-	resultCallback func(result any, err error),
+	initialState S,
+	eventCallback func(event StreamEvent[S]),
+	resultCallback func(result S, err error),
 ) error {
 
 	streamResult := se.runnable.Stream(ctx, initialState)
 	defer streamResult.Cancel()
 
-	var finalResult any
+	var finalResult S
 	var finalError error
 	resultReceived := false
 
@@ -493,238 +355,30 @@ func (se *StreamingExecutor) ExecuteWithCallback(
 }
 
 // ExecuteAsync executes the graph asynchronously and returns immediately
-func (se *StreamingExecutor) ExecuteAsync(ctx context.Context, initialState any) *StreamResult {
+func (se *StreamingExecutor[S]) ExecuteAsync(ctx context.Context, initialState S) *StreamResult[S] {
 	return se.runnable.Stream(ctx, initialState)
 }
 
 // GetGraph returns a Exporter for the streaming runnable
-func (sr *StreamingRunnable) GetGraph() *Exporter[map[string]any] {
+func (sr *StreamingRunnable[S]) GetGraph() *Exporter[S] {
 	return sr.runnable.GetGraph()
 }
 
-// Generic streaming types
-
-// StreamingStateGraphTyped[S any] extends ListenableStateGraphTyped[S] with streaming capabilities
-type StreamingStateGraphTyped[S any] struct {
-	*ListenableStateGraphTyped[S]
-	config StreamConfig
-}
-
-// NewStreamingStateGraphTyped creates a new streaming state graph with type parameter
-func NewStreamingStateGraphTyped[S any]() *StreamingStateGraphTyped[S] {
-	baseGraph := NewListenableStateGraphTyped[S]()
-	return &StreamingStateGraphTyped[S]{
-		ListenableStateGraphTyped: baseGraph,
-		config:                    DefaultStreamConfig(),
-	}
-}
-
-// NewStreamingStateGraphTypedWithConfig creates a streaming graph with custom config
-func NewStreamingStateGraphTypedWithConfig[S any](config StreamConfig) *StreamingStateGraphTyped[S] {
-	baseGraph := NewListenableStateGraphTyped[S]()
-	return &StreamingStateGraphTyped[S]{
-		ListenableStateGraphTyped: baseGraph,
-		config:                    config,
-	}
-}
-
-// CompileStreaming compiles the graph into a streaming runnable
-func (g *StreamingStateGraphTyped[S]) CompileStreaming() (*StreamingRunnableTyped[S], error) {
-	listenableRunnable, err := g.CompileListenable()
-	if err != nil {
-		return nil, err
-	}
-
-	return NewStreamingRunnableTyped(listenableRunnable, g.config), nil
-}
-
-// SetStreamConfig updates the streaming configuration
-func (g *StreamingStateGraphTyped[S]) SetStreamConfig(config StreamConfig) {
-	g.config = config
-}
-
-// GetStreamConfig returns the current streaming configuration
-func (g *StreamingStateGraphTyped[S]) GetStreamConfig() StreamConfig {
-	return g.config
-}
-
-// StreamingRunnableTyped[S] wraps a ListenableRunnableTyped[S] with streaming capabilities
-type StreamingRunnableTyped[S any] struct {
-	runnable *ListenableRunnableTyped[S]
-	config   StreamConfig
-}
-
-// NewStreamingRunnableTyped creates a new streaming runnable from a listenable runnable
-func NewStreamingRunnableTyped[S any](runnable *ListenableRunnableTyped[S], config StreamConfig) *StreamingRunnableTyped[S] {
-	return &StreamingRunnableTyped[S]{
-		runnable: runnable,
-		config:   config,
-	}
-}
-
-// Stream executes the graph with streaming enabled
-func (sr *StreamingRunnableTyped[S]) Stream(ctx context.Context, initialState S) <-chan StreamEventTyped[S] {
-	eventsChan := make(chan StreamEventTyped[S], sr.config.BufferSize)
-	doneChan := make(chan struct{})
-	cancelChan := make(chan struct{})
-
-	go func() {
-		defer close(eventsChan)
-		defer close(doneChan)
-
-		currentState := initialState
-
-		for {
-			// Check for cancellation
-			select {
-			case <-cancelChan:
-				return
-			case <-ctx.Done():
-				eventsChan <- StreamEventTyped[S]{
-					Event:    NodeEventError,
-					Timestamp: time.Now(),
-					Error:     ctx.Err(),
-				}
-				return
-			default:
-			}
-
-			// Execute one step
-			var err error
-			currentState, err = sr.runnable.Invoke(ctx, currentState)
-
-			// Emit event based on mode
-			switch sr.config.Mode {
-			case StreamModeValues:
-				eventsChan <- StreamEventTyped[S]{
-					Event:    "graph_step",
-					State:    currentState,
-					Timestamp: time.Now(),
-				}
-			case StreamModeUpdates:
-				eventsChan <- StreamEventTyped[S]{
-					Event:    NodeEventComplete,
-					State:    currentState,
-					Timestamp: time.Now(),
-				}
-			case StreamModeDebug:
-				eventsChan <- StreamEventTyped[S]{
-					Event:    "debug",
-					State:    currentState,
-					Timestamp: time.Now(),
-				}
-			}
-
-			if err != nil {
-				eventsChan <- StreamEventTyped[S]{
-					Event:    NodeEventError,
-					Error:     err,
-					State:     currentState,
-					Timestamp: time.Now(),
-				}
-				return
-			}
-
-			// Check if we're done - if state has reached END
-			if sr.isComplete(currentState) {
-				return
-			}
-		}
-	}()
-
-	return eventsChan
-}
-
-// isComplete checks if the graph execution is complete
-func (sr *StreamingRunnableTyped[S]) isComplete(state S) bool {
-	// Default implementation - can be overridden
-	return false
-}
-
-// Invoke executes the graph without streaming
-func (sr *StreamingRunnableTyped[S]) Invoke(ctx context.Context, initialState S) (S, error) {
-	return sr.runnable.Invoke(ctx, initialState)
-}
-
-// GetConfig returns the streaming configuration
-func (sr *StreamingRunnableTyped[S]) GetConfig() StreamConfig {
-	return sr.config
-}
-
-// SetConfig updates the streaming configuration
-func (sr *StreamingRunnableTyped[S]) SetConfig(config StreamConfig) {
-	sr.config = config
-}
-
-// GetGraph returns the underlying listenable graph
-func (sr *StreamingRunnableTyped[S]) GetGraph() *ListenableStateGraphTyped[S] {
-	return sr.runnable.GetListenableGraph()
-}
-
 // GetTracer returns the tracer from the underlying runnable
-func (sr *StreamingRunnableTyped[S]) GetTracer() *Tracer {
+func (sr *StreamingRunnable[S]) GetTracer() *Tracer {
 	return sr.runnable.GetTracer()
 }
 
 // SetTracer sets the tracer on the underlying runnable
-func (sr *StreamingRunnableTyped[S]) SetTracer(tracer *Tracer) {
+func (sr *StreamingRunnable[S]) SetTracer(tracer *Tracer) {
 	sr.runnable.SetTracer(tracer)
 }
 
-// WithTracer returns a new StreamingRunnableTyped with the given tracer
-func (sr *StreamingRunnableTyped[S]) WithTracer(tracer *Tracer) *StreamingRunnableTyped[S] {
+// WithTracer returns a new StreamingRunnable with the given tracer
+func (sr *StreamingRunnable[S]) WithTracer(tracer *Tracer) *StreamingRunnable[S] {
 	newRunnable := sr.runnable.WithTracer(tracer)
-	return &StreamingRunnableTyped[S]{
+	return &StreamingRunnable[S]{
 		runnable: newRunnable,
 		config:   sr.config,
 	}
-}
-
-// StreamingExecutorTyped[S] provides a high-level interface for streaming execution
-type StreamingExecutorTyped[S any] struct {
-	runnable *StreamingRunnableTyped[S]
-}
-
-// NewStreamingExecutorTyped creates a new streaming executor
-func NewStreamingExecutorTyped[S any](runnable *StreamingRunnableTyped[S]) *StreamingExecutorTyped[S] {
-	return &StreamingExecutorTyped[S]{
-		runnable: runnable,
-	}
-}
-
-// ExecuteWithCallback executes the graph and calls the callback for each event
-func (se *StreamingExecutorTyped[S]) ExecuteWithCallback(
-	ctx context.Context,
-	initialState S,
-	eventCallback func(event StreamEventTyped[S]),
-	resultCallback func(result S, err error),
-) error {
-
-	eventsChan := se.runnable.Stream(ctx, initialState)
-
-	var finalResult S
-	var finalError error
-
-	for event := range eventsChan {
-		if event.Error != nil {
-			finalError = event.Error
-		}
-
-		if eventCallback != nil {
-			eventCallback(event)
-		}
-
-		// Update final state on each event
-		finalResult = event.State
-	}
-
-	if finalError != nil {
-		return finalError
-	}
-
-	if resultCallback != nil {
-		resultCallback(finalResult, nil)
-	}
-
-	return nil
 }

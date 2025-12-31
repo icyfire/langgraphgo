@@ -96,7 +96,7 @@ func main() {
 	threadID := "durable-job-1"
 
 	// 1. Define Graph
-	g := graph.NewCheckpointableStateGraph()
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 	// Use MapSchema for state
 	schema := graph.NewMapSchema()
 	schema.RegisterReducer("steps", graph.AppendReducer)
@@ -109,14 +109,14 @@ func main() {
 	})
 
 	// Step 1
-	g.AddNode("step_1", "step_1", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("step_1", "step_1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("Executing Step 1...")
 		time.Sleep(500 * time.Millisecond)
 		return map[string]any{"steps": []string{"Step 1 Completed"}}, nil
 	})
 
 	// Step 2 (Simulate Crash)
-	g.AddNode("step_2", "step_2", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("step_2", "step_2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("Executing Step 2...")
 		time.Sleep(500 * time.Millisecond)
 
@@ -131,7 +131,7 @@ func main() {
 	})
 
 	// Step 3
-	g.AddNode("step_3", "step_3", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("step_3", "step_3", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("Executing Step 3...")
 		time.Sleep(500 * time.Millisecond)
 		return map[string]any{"steps": []string{"Step 3 Completed"}}, nil
@@ -157,41 +157,6 @@ func main() {
 		fmt.Printf("Found existing checkpoint: %s (Node: %s)\n", latest.ID, latest.NodeName)
 		fmt.Println("Resuming execution...")
 
-		// In a real Durable Execution setup, we would want to resume FROM the next node.
-		// Currently ResumeFromCheckpoint just loads state.
-		// We need to tell the runner to start from the *next* node of the checkpoint.
-		// Or, if the checkpoint was saved *after* a node completed, we continue from its edges.
-
-		// For this demo, we'll use the state to determine where we are,
-		// but ideally the framework handles this.
-		// Since LangGraphGo's ResumeFromCheckpoint is basic, we might need to manually inspect.
-
-		// However, let's try to use the ResumeFrom config if we implemented it.
-		// graph.Config has ResumeFrom []string.
-
-		// If latest checkpoint is from "step_1", we want to resume.
-		// But wait, if we crashed INSIDE step_2, step_2 didn't finish, so no checkpoint for step_2.
-		// So the latest checkpoint is "step_1".
-		// So we should resume from the state of "step_1".
-		// The graph execution logic should see that "step_1" is done and move to "step_2".
-
-		// To achieve this "continue" behavior, we pass the checkpoint ID.
-		// The runner *should* know that if we provide a checkpoint, we are continuing.
-		// But currently Invoke() starts from EntryPoint unless ResumeFrom is set.
-
-		// Let's manually set ResumeFrom based on the checkpoint's node.
-		// If checkpoint is at "step_1", we want to execute the edges out of "step_1".
-		// Which means the next node is "step_2".
-
-		// Actually, if we load the state of "step_1", and we invoke the graph,
-		// we want the graph to figure out "what's next".
-		// But the graph is stateless.
-
-		// Let's use a trick: We pass the checkpoint state as initial state,
-		// and we set ResumeFrom to the *next* nodes.
-		// But we need to know the next nodes.
-
-		// For this simple linear graph:
 		var nextNode string
 		if latest.NodeName == "step_1" {
 			nextNode = "step_2"
@@ -211,14 +176,23 @@ func main() {
 			ResumeFrom: []string{nextNode},
 		}
 
-		// We use the checkpoint state as input
-		// runnable.Invoke(ctx, latest.State, config)
-		// Wait, Invoke expects input, not full state?
-		// If we provide ResumeFrom, the runner uses that as start nodes.
-		// And it uses the provided state.
-
 		fmt.Printf("Continuing from %s...\n", nextNode)
-		res, err := runnable.InvokeWithConfig(ctx, latest.State, config)
+		// We need to cast state to map[string]any
+		stateMap, ok := latest.State.(map[string]any)
+		if !ok {
+			// handle parsing if loaded as generic interface{} (unmarshalled from JSON)
+			// JSON unmarshal to interface{} makes maps map[string]interface{}
+			// So simple cast might work, or we need more robust handling.
+			// For now, let's assume it works or we re-marshal.
+			// Actually, NewDiskStore uses json.Unmarshal into *graph.Checkpoint.
+			// graph.Checkpoint.State is `any`.
+			// If we save map[string]any, JSON marshals it.
+			// Unmarshal will give map[string]interface{}.
+			// So the cast should be fine.
+			stateMap = latest.State.(map[string]any)
+		}
+
+		res, err := runnable.InvokeWithConfig(ctx, stateMap, config)
 		if err != nil {
 			log.Fatal(err)
 		}

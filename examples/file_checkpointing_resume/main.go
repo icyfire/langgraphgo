@@ -26,28 +26,25 @@ func main() {
 	}
 
 	// Define a simplified setup function to create the graph logic
-	createGraph := func() *graph.CheckpointableStateGraph {
-		g := graph.NewCheckpointableStateGraph()
+	createGraph := func() *graph.CheckpointableStateGraph[map[string]any] {
+		g := graph.NewCheckpointableStateGraph[map[string]any]()
 
-		g.AddNode("step1", "step1", func(ctx context.Context, state any) (any, error) {
+		g.AddNode("step1", "step1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			fmt.Println("  [EXEC] Running Step 1")
-			m := state.(map[string]any)
-			m["step1"] = "done"
-			return m, nil
+			state["step1"] = "done"
+			return state, nil
 		})
 
-		g.AddNode("step2", "step2", func(ctx context.Context, state any) (any, error) {
+		g.AddNode("step2", "step2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			fmt.Println("  [EXEC] Running Step 2")
-			m := state.(map[string]any)
-			m["step2"] = "done"
-			return m, nil
+			state["step2"] = "done"
+			return state, nil
 		})
 
-		g.AddNode("step3", "step3", func(ctx context.Context, state any) (any, error) {
+		g.AddNode("step3", "step3", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			fmt.Println("  [EXEC] Running Step 3")
-			m := state.(map[string]any)
-			m["step3"] = "done"
-			return m, nil
+			state["step3"] = "done"
+			return state, nil
 		})
 
 		g.AddEdge("step1", "step2")
@@ -92,12 +89,6 @@ func main() {
 	res1, err := runnable1.InvokeWithConfig(ctx, initialState, config1)
 	if err != nil {
 		// We expect an interrupt error or a GraphInterrupt return if treated as error?
-		// Currently InvokeWithConfig returns (state, error).
-		// Inspecting code: if interrupt, check implementation...
-		// In state_graph.go, it returns (state, &GraphInterrupt{...}) which IS an error interface (usually).
-		// But let's check exact signature in state_graph.go refactor.
-		// It returns (state, &GraphInterrupt{...}).
-		// So err might be != nil.
 		if _, ok := err.(*graph.GraphInterrupt); ok {
 			fmt.Printf("  [INFO] Graph interrupted as expected: %v\n", err)
 		} else {
@@ -151,7 +142,16 @@ func main() {
 	}
 
 	// Use the state from the checkpoint
-	resumedState := latestCP.State
+	// The state in checkpoint is generic 'any'. We cast it to map[string]any.
+	resumedState, ok := latestCP.State.(map[string]any)
+	if !ok {
+		// Try to handle map[string]interface{} from JSON unmarshal
+		if m, ok := latestCP.State.(map[string]interface{}); ok {
+			resumedState = m
+		} else {
+			log.Fatalf("Failed to cast checkpoint state to map[string]any: %T", latestCP.State)
+		}
+	}
 
 	// Invoke
 	res2, err := runnable2.InvokeWithConfig(ctx, resumedState, config2)
@@ -162,7 +162,7 @@ func main() {
 	fmt.Printf("  [INFO] Final Result: %v\n", res2)
 
 	// Verify complete execution state
-	finalMap := res2.(map[string]any)
+	finalMap := res2
 	if finalMap["step1"] == "done" && finalMap["step2"] == "done" && finalMap["step3"] == "done" {
 		fmt.Println("  [SUCCESS] Graph successfully resumed and completed all steps.")
 	} else {

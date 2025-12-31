@@ -88,7 +88,7 @@ func main() {
 	}
 
 	// Print result
-	messages := result.(map[string]any)["messages"].([]llms.MessageContent)
+	messages := result["messages"].([]llms.MessageContent)
 	lastMsg := messages[len(messages)-1]
 
 	fmt.Println("Answer:")

@@ -77,7 +77,7 @@ func TestRAGPipelineNodes(t *testing.T) {
 
 	t.Run("Generate Node", func(t *testing.T) {
 		state := map[string]any{
-			"query": "test",
+			"query":     "test",
 			"documents": []RAGDocument{{Content: "context", Metadata: map[string]any{"source": "src1"}}},
 		}
 		res, err := p.generateNode(ctx, state)

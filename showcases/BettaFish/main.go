@@ -27,35 +27,29 @@ func main() {
 	if os.Getenv("TAVILY_API_KEY") == "" {
 		log.Fatal("错误: 未设置 TAVILY_API_KEY 环境变量。")
 	}
-	// Optional: Check for API Base if using alternative providers (e.g., DeepSeek)
-	if os.Getenv("OPENAI_API_BASE") != "" {
-		fmt.Printf("使用自定义 API Base: %s\n", os.Getenv("OPENAI_API_BASE"))
-	}
-	if os.Getenv("OPENAI_MODEL") != "" {
-		fmt.Printf("使用自定义模型: %s\n", os.Getenv("OPENAI_MODEL"))
-	}
 
 	query := os.Args[1]
 
-	// Initialize state as map[string]any
-	initialState := map[string]any{
-		"query":      query,
-		"paragraphs": make([]*schema.Paragraph, 0),
-	}
+	// Initialize state
+	initialState := schema.NewBettaFishState(query)
 
-	// Create graph using the custom state type
-	workflow := graph.NewStateGraph[map[string]any]()
+	// Create graph with typed state *schema.BettaFishState
+	workflow := graph.NewStateGraph[*schema.BettaFishState]()
 
-	// Wrap node functions to match typed signature
-	wrapNode := func(fn func(ctx context.Context, state any) (any, error)) func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		return func(ctx context.Context, s map[string]any) (map[string]any, error) {
-			result, err := fn(ctx, s)
+	// Helper to wrap untyped nodes (func(ctx, any) (any, error)) to typed nodes
+	// The engines were written with untyped signature but expect *BettaFishState inside.
+	// So we can just call them, but we need to cast the result back to *BettaFishState if it returns any.
+	wrapNode := func(fn func(ctx context.Context, state any) (any, error)) func(ctx context.Context, state *schema.BettaFishState) (*schema.BettaFishState, error) {
+		return func(ctx context.Context, s *schema.BettaFishState) (*schema.BettaFishState, error) {
+			res, err := fn(ctx, s)
 			if err != nil {
 				return nil, err
 			}
-			if resultMap, ok := result.(map[string]any); ok {
-				return resultMap, nil
+			if typedRes, ok := res.(*schema.BettaFishState); ok {
+				return typedRes, nil
 			}
+			// If it returns something else (or nil), we return the original state modified in place (since it's a pointer)
+			// But wait, if fn modifies *s in place and returns it as 'any', typedRes assertion works.
 			return s, nil
 		}
 	}
@@ -67,7 +61,7 @@ func main() {
 	workflow.AddNode("forum_engine", "Forum search engine", wrapNode(forum_engine.ForumEngineNode))
 	workflow.AddNode("report_engine", "Report generation engine", wrapNode(report_engine.ReportEngineNode))
 
-	// Add edges (Sequential for now)
+	// Add edges
 	workflow.SetEntryPoint("query_engine")
 	workflow.AddEdge("query_engine", "media_engine")
 	workflow.AddEdge("media_engine", "insight_engine")
@@ -89,7 +83,6 @@ func main() {
 	}
 
 	// Print result
-	paragraphs, _ := finalState["paragraphs"].([]*schema.Paragraph)
 	fmt.Println("\n=== 执行完成 ===")
-	fmt.Printf("报告已生成，包含 %d 个段落。\n", len(paragraphs))
+	fmt.Printf("报告已生成，包含 %d 个段落。\n", len(finalState.Paragraphs))
 }

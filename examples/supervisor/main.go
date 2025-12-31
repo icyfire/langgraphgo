@@ -69,23 +69,22 @@ func main() {
 	}
 
 	// 1. Create Math Agent
-	mathAgent, err := prebuilt.CreateReactAgent(model, []tools.Tool{CalculatorTool{}}, 20)
+	mathAgent, err := prebuilt.CreateReactAgentMap(model, []tools.Tool{CalculatorTool{}}, 20)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 2. Create General Agent (just a simple runnable or react agent with no tools)
-	generalAgent, err := prebuilt.CreateReactAgent(model, []tools.Tool{}, 20)
+	// 2. Create General Agent
+	generalAgent, err := prebuilt.CreateReactAgentMap(model, []tools.Tool{}, 20)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// 3. Create Supervisor
-	// Manually implemented to fix "did not select next step" error and add debug info
-	g := graph.NewStateGraph()
+	g := graph.NewStateGraph[map[string]any]()
 
-	agentNode := func(agent *graph.StateRunnableUntyped func(context.Context, any) (any, error) {
-		return func(ctx context.Context, state any) (any, error) {
+	agentNode := func(agent *graph.StateRunnable[map[string]any]) func(context.Context, map[string]any) (map[string]any, error) {
+		return func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			return agent.Invoke(ctx, state)
 		}
 	}
@@ -93,9 +92,8 @@ func main() {
 	g.AddNode("MathExpert", "Math Agent", agentNode(mathAgent))
 	g.AddNode("GeneralAssistant", "General Agent", agentNode(generalAgent))
 
-	supervisorNode := func(ctx context.Context, state any) (any, error) {
-		mState := state.(map[string]any)
-		messages := mState["messages"].([]llms.MessageContent)
+	supervisorNode := func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		messages := state["messages"].([]llms.MessageContent)
 
 		systemPrompt := `You are a supervisor tasked with managing a conversation between the following workers:
 - MathExpert
@@ -133,17 +131,16 @@ Return only the name of the next actor or FINISH.`
 			choice = "FINISH"
 		}
 
-		mState["next"] = choice
-		return mState, nil
+		state["next"] = choice
+		return state, nil
 	}
 
 	g.AddNode("Supervisor", "Supervisor", supervisorNode)
 
 	g.SetEntryPoint("Supervisor")
 
-	g.AddConditionalEdge("Supervisor", func(ctx context.Context, state any) string {
-		mState := state.(map[string]any)
-		next, _ := mState["next"].(string)
+	g.AddConditionalEdge("Supervisor", func(ctx context.Context, state map[string]any) string {
+		next, _ := state["next"].(string)
 		if next == "FINISH" {
 			return graph.END
 		}
@@ -168,12 +165,6 @@ Return only the name of the next actor or FINISH.`
 		},
 	}
 
-	// Note: Supervisor loop might run indefinitely if not careful or if LLM doesn't say FINISH.
-	// We rely on the supervisor prompt to eventually FINISH.
-	// For safety, we might want to add a recursion limit config if available,
-	// but here we just run it.
-
-	// We can use a timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -183,8 +174,7 @@ Return only the name of the next actor or FINISH.`
 	}
 
 	// Print Result
-	mState := res.(map[string]any)
-	messages := mState["messages"].([]llms.MessageContent)
+	messages := res["messages"].([]llms.MessageContent)
 
 	fmt.Println("\n=== Conversation History ===")
 	for _, msg := range messages {

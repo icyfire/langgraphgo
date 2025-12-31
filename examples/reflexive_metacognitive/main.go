@@ -102,19 +102,15 @@ var drugTool = NewDrugInteractionChecker()
 // ==================== Graph Nodes ====================
 
 // MetacognitiveAnalysisNode performs the self-reflection step
-// This is the core of the metacognitive architecture
-func MetacognitiveAnalysisNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func MetacognitiveAnalysisNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("\n┌─────────────────────────────────────────────────────────────┐")
 	fmt.Println("│ 🤔 Agent is performing metacognitive analysis...            │")
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
 	// Create prompt for metacognitive analysis
-	prompt := fmt.Sprintf(`You are a metacognitive reasoning engine for an AI assistant. Your task is to analyze a user's query in the context of the agent's own capabilities and limitations (its 'self-model').
-
-Your primary directive is **SAFETY**. You must determine the safest and most appropriate strategy for handling the query.
+	prompt := fmt.Sprintf(`You are a metacognitive reasoning engine for an AI assistant. Analyze the user's query based on the agent's self-model.
 
 **Agent's Self-Model:**
 - Name: %s
@@ -122,30 +118,18 @@ Your primary directive is **SAFETY**. You must determine the safest and most app
 - Knowledge Domain: %s
 - Available Tools: %s
 
-**Knowledge Domain Topics:** The agent is knowledgeable about: common_cold, influenza, allergies, headaches, basic_first_aid.
-
 **Strategy Rules:**
-1. **escalate**: Choose this strategy if:
-   - The query involves a potential medical emergency (chest pain, difficulty breathing, severe injury, broken bones)
-   - The query is about topics NOT in the knowledge domain (e.g., cancer, diabetes, heart disease, surgery)
-   - You have ANY doubt about providing a safe answer
-   **WHEN IN DOUBT, ESCALATE.**
+1. **escalate**: Emergency, out-of-domain, or doubt.
+2. **use_tool**: Explicitly requires 'drug_interaction_checker'.
+3. **reason_directly**: In-domain, low-risk.
 
-2. **use_tool**: Choose this strategy if the query explicitly or implicitly requires one of the available tools. For example, a question about drug interactions requires the 'drug_interaction_checker'.
-
-3. **reason_directly**: Choose this strategy ONLY if:
-   - The query is clearly about topics in the knowledge domain (cold, flu, allergies, headaches, basic first aid)
-   - The query is a simple, low-risk informational question
-   - There are no symptoms suggesting a serious condition
-
-Analyze the user query below and provide your metacognitive analysis in the following format:
-
+FORMAT:
 CONFIDENCE: [0.0 to 1.0]
 STRATEGY: [escalate|use_tool|reason_directly]
-TOOL_TO_USE: [if use_tool, the tool name; otherwise "none"]
-DRUG_A: [if drug_interaction_checker, or "none"]
-DRUG_B: [if drug_interaction_checker, or "none"]
-REASONING: [brief justification for the chosen confidence and strategy]
+TOOL_TO_USE: [tool name or "none"]
+DRUG_A: [drug name or "none"]
+DRUG_B: [drug name or "none"]
+REASONING: [justification]
 
 **User Query:** %s`,
 		agentState.SelfModel.Name,
@@ -155,7 +139,7 @@ REASONING: [brief justification for the chosen confidence and strategy]
 		agentState.UserQuery)
 
 	// Call LLM
-	llm := stateMap["llm"].(llms.Model)
+	llm := state["llm"].(llms.Model)
 	resp, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("metacognitive analysis LLM call failed: %w", err)
@@ -171,39 +155,36 @@ REASONING: [brief justification for the chosen confidence and strategy]
 	fmt.Printf("│ Reasoning: %s                                              │\n", truncate(analysis.Reasoning, 50))
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
-	return stateMap, nil
+	return state, nil
 }
 
 // ReasonDirectlyNode handles high-confidence, low-risk queries
-func ReasonDirectlyNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func ReasonDirectlyNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 	fmt.Println("│ ✅ Confident in direct answer. Generating response...       │")
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
-	prompt := fmt.Sprintf(`You are %s. Provide a helpful, non-prescriptive answer to the user's query.
-IMPORTANT: Always remind the user that you are not a doctor and this is not medical advice.
+	prompt := fmt.Sprintf(`You are %s. Provide a helpful, non-prescriptive answer. Reminder: not a doctor.
 
 Query: %s`,
 		agentState.SelfModel.Role,
 		agentState.UserQuery)
 
-	llm := stateMap["llm"].(llms.Model)
+	llm := state["llm"].(llms.Model)
 	resp, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("reason directly LLM call failed: %w", err)
 	}
 
 	agentState.FinalResponse = resp
-	return stateMap, nil
+	return state, nil
 }
 
 // CallToolNode handles queries that require specialized tools
-func CallToolNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func CallToolNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 	fmt.Printf("│ 🛠️  Confidence requires tool use. Calling `%s`...        │\n", agentState.MetacognitiveAnalysis.ToolToUse)
@@ -219,20 +200,18 @@ func CallToolNode(ctx context.Context, state any) (any, error) {
 		agentState.ToolOutput = "Error: Tool not found."
 	}
 
-	return stateMap, nil
+	return state, nil
 }
 
 // SynthesizeToolResponseNode combines tool output with a helpful response
-func SynthesizeToolResponseNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func SynthesizeToolResponseNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 	fmt.Println("│ 📝 Synthesizing final response from tool output...          │")
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
-	prompt := fmt.Sprintf(`You are %s. You have used a tool to get specific information. Now, present this information to the user in a clear and helpful way.
-IMPORTANT: ALWAYS include a disclaimer to consult a healthcare professional. You are not a doctor.
+	prompt := fmt.Sprintf(`You are %s. Present tool information clearly. Disclaimer: not a doctor.
 
 Original Query: %s
 Tool Output: %s`,
@@ -240,39 +219,36 @@ Tool Output: %s`,
 		agentState.UserQuery,
 		agentState.ToolOutput)
 
-	llm := stateMap["llm"].(llms.Model)
+	llm := state["llm"].(llms.Model)
 	resp, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("synthesize tool response LLM call failed: %w", err)
 	}
 
 	agentState.FinalResponse = resp
-	return stateMap, nil
+	return state, nil
 }
 
 // EscalateToHumanNode handles low-confidence or high-risk queries
-func EscalateToHumanNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func EscalateToHumanNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 	fmt.Println("│ 🚨 Low confidence or high risk detected. Escalating.       │")
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
 	response := "I am an AI assistant and not qualified to provide information on this topic. " +
-		"This query is outside my knowledge domain or involves potentially serious symptoms. " +
 		"**Please consult a qualified medical professional immediately.**"
 
 	agentState.FinalResponse = response
-	return stateMap, nil
+	return state, nil
 }
 
 // ==================== Routing Logic ====================
 
 // RouteStrategy determines the next node based on the metacognitive analysis
-func RouteStrategy(ctx context.Context, state any) string {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func RouteStrategy(ctx context.Context, state map[string]any) string {
+	agentState := state["agent_state"].(*AgentState)
 
 	switch agentState.MetacognitiveAnalysis.Strategy {
 	case "reason_directly":
@@ -282,7 +258,7 @@ func RouteStrategy(ctx context.Context, state any) string {
 	case "escalate":
 		return "escalate"
 	default:
-		return "escalate" // Default to safe option
+		return "escalate"
 	}
 }
 
@@ -352,22 +328,11 @@ func truncate(s string, maxLen int) string {
 // ==================== Main Function ====================
 
 func main() {
-	// Check for API key
 	if os.Getenv("OPENAI_API_KEY") == "" {
 		log.Fatal("OPENAI_API_KEY environment variable is required")
 	}
 
 	fmt.Println("=== 📘 Reflexive Metacognitive Agent Architecture ===")
-	fmt.Println()
-	fmt.Println("This demo implements a medical triage assistant with self-awareness.")
-	fmt.Println("The agent maintains an explicit 'self-model' and performs metacognitive")
-	fmt.Println("analysis before deciding how to handle each query.")
-	fmt.Println()
-	fmt.Println("Strategies:")
-	fmt.Println("  - REASON_DIRECTLY: High-confidence, low-risk queries")
-	fmt.Println("  - USE_TOOL: Queries requiring specialized tools")
-	fmt.Println("  - ESCALATE: Low-confidence, high-risk, or out-of-scope queries")
-	fmt.Println()
 
 	// Create LLM
 	llm, err := openai.New()
@@ -384,8 +349,8 @@ func main() {
 		ConfidenceThreshold: 0.6,
 	}
 
-	// Create the metacognitive graph
-	workflow := graph.NewStateGraph()
+	// Create the metacognitive graph with map state
+	workflow := graph.NewStateGraph[map[string]any]()
 
 	// Add nodes
 	workflow.AddNode("analyze", "Metacognitive analysis", MetacognitiveAnalysisNode)
@@ -438,7 +403,7 @@ func main() {
 	}
 
 	for i, test := range testQueries {
-		fmt.Printf("\n--- Test %d: %s ---\n", i+1, test.name)
+		fmt.Printf("\n--- Test %d: %s ---", i+1, test.name)
 
 		agentState := &AgentState{
 			UserQuery: test.query,
@@ -456,23 +421,10 @@ func main() {
 			continue
 		}
 
-		resultMap := result.(map[string]any)
-		finalState := resultMap["agent_state"].(*AgentState)
+		finalState := result["agent_state"].(*AgentState)
 
 		fmt.Println("\n📋 Response:")
 		fmt.Println(finalState.FinalResponse)
 		fmt.Println(strings.Repeat("=", 70))
 	}
-
-	fmt.Println("\n=== 🎯 Key Takeaways ===")
-	fmt.Println("The Reflexive Metacognitive Agent architecture enables AI systems to:")
-	fmt.Println("1. Maintain an explicit self-model of capabilities and limitations")
-	fmt.Println("2. Perform metacognitive analysis BEFORE attempting to solve problems")
-	fmt.Println("3. Choose the safest strategy: reason directly, use tools, or escalate")
-	fmt.Println("4. Recognize when they don't know something — critical for safety")
-	fmt.Println()
-	fmt.Println("This architecture is essential for:")
-	fmt.Println("- High-stakes advisory systems (healthcare, law, finance)")
-	fmt.Println("- Autonomous systems that must assess their own capabilities")
-	fmt.Println("- Any domain where incorrect information could cause harm")
 }

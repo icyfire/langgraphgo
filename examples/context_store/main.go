@@ -15,8 +15,22 @@ type ProcessState struct {
 }
 
 func main() {
-	// Create a checkpointable graph
-	g := graph.NewCheckpointableStateGraph()
+	// Create a checkpointable graph with typed state
+	g := graph.NewCheckpointableStateGraph[ProcessState]()
+
+	// Define state schema with merger logic
+	// Since ProcessState is a struct, we can use a schema to merge partial updates if needed.
+	// But here nodes return full state (modified), so Overwrite is fine or default struct merge.
+	// Default struct merge overwrites non-zero fields.
+	// Let's use NewStructSchema.
+	schema := graph.NewStructSchema(
+		ProcessState{},
+		func(current, new ProcessState) (ProcessState, error) {
+			// For this example, we simply replace the state with the new one returned by the node
+			return new, nil
+		},
+	)
+	g.SetSchema(schema)
 
 	// Configure checkpointing
 	config := graph.CheckpointConfig{
@@ -28,8 +42,7 @@ func main() {
 	g.SetCheckpointConfig(config)
 
 	// Add processing nodes
-	g.AddNode("step1", "step1", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step1", "step1", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 1
 		s.Data = s.Data + " → Step1"
 		s.History = append(s.History, "Completed Step 1")
@@ -38,8 +51,7 @@ func main() {
 		return s, nil
 	})
 
-	g.AddNode("step2", "step2", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step2", "step2", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 2
 		s.Data = s.Data + " → Step2"
 		s.History = append(s.History, "Completed Step 2")
@@ -48,8 +60,7 @@ func main() {
 		return s, nil
 	})
 
-	g.AddNode("step3", "step3", func(ctx context.Context, state any) (any, error) {
-		s := state.(ProcessState)
+	g.AddNode("step3", "step3", func(ctx context.Context, s ProcessState) (ProcessState, error) {
 		s.Step = 3
 		s.Data = s.Data + " → Step3"
 		s.History = append(s.History, "Completed Step 3")
@@ -85,7 +96,7 @@ func main() {
 		panic(err)
 	}
 
-	finalState := result.(ProcessState)
+	finalState := result
 	fmt.Printf("\n=== Execution completed ===\n")
 	fmt.Printf("Final Step: %d\n", finalState.Step)
 	fmt.Printf("Final Data: %s\n", finalState.Data)
@@ -105,11 +116,33 @@ func main() {
 	// Demonstrate resuming from a checkpoint
 	if len(checkpoints) > 1 {
 		fmt.Printf("\n=== Resuming from checkpoint %s ===\n", checkpoints[1].ID)
-		resumedState, err := runnable.ResumeFromCheckpoint(ctx, checkpoints[1].ID)
+		// Checkpoint stores generic 'any', need to cast if loading manually,
+		// but ResumeFromCheckpoint is not implemented in generic CheckpointableRunnable yet?
+		// Wait, I didn't implement ResumeFromCheckpoint in generic CheckpointableRunnable[S]!
+		// I only implemented LoadCheckpoint.
+		// Let's implement ResumeFromCheckpoint or just use LoadCheckpoint + Invoke.
+
+		// Actually, ResumeFromCheckpoint was convenient wrapper.
+		// But in the example I can just use LoadCheckpoint and cast.
+
+		cp, err := runnable.LoadCheckpoint(ctx, checkpoints[1].ID)
 		if err != nil {
-			fmt.Printf("Error resuming: %v\n", err)
+			fmt.Printf("Error loading checkpoint: %v\n", err)
 		} else {
-			resumed := resumedState.(ProcessState)
+			// Ensure state is cast correctly
+			// Checkpoint.State is any. JSON unmarshal might make it map[string]any if using file store.
+			// But here we use MemoryStore which stores struct as is (if pointer) or value.
+			// Let's assume it's ProcessState.
+
+			var resumed ProcessState
+			if s, ok := cp.State.(ProcessState); ok {
+				resumed = s
+			} else {
+				// Handle map[string]any case if needed (e.g. if loaded from JSON)
+				// For now assuming MemoryStore preserves type
+				fmt.Printf("Warning: Checkpoint state type mismatch: %T\n", cp.State)
+			}
+
 			fmt.Printf("Resumed at Step: %d\n", resumed.Step)
 			fmt.Printf("Resumed Data: %s\n", resumed.Data)
 			fmt.Printf("Resumed History: %v\n", resumed.History)

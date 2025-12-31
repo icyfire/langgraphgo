@@ -65,7 +65,7 @@ func TestCreateSubgraph(t *testing.T) {
 }
 
 func TestNewCompositeGraph(t *testing.T) {
-	cg := NewCompositeGraph()
+	cg := NewCompositeGraph[map[string]any]()
 
 	assert.NotNil(t, cg)
 	assert.NotNil(t, cg.main)
@@ -74,7 +74,7 @@ func TestNewCompositeGraph(t *testing.T) {
 }
 
 func TestCompositeGraph_AddGraph(t *testing.T) {
-	cg := NewCompositeGraph()
+	cg := NewCompositeGraph[map[string]any]()
 
 	graph1 := NewStateGraph[map[string]any]()
 	graph1.AddNode("test", "Test", func(ctx context.Context, state map[string]any) (map[string]any, error) {
@@ -87,7 +87,7 @@ func TestCompositeGraph_AddGraph(t *testing.T) {
 }
 
 func TestCompositeGraph_Connect(t *testing.T) {
-	cg := NewCompositeGraph()
+	cg := NewCompositeGraph[map[string]any]()
 
 	graph1 := NewStateGraph[map[string]any]()
 	graph1.AddNode("output1", "Output 1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
@@ -106,10 +106,9 @@ func TestCompositeGraph_Connect(t *testing.T) {
 	cg.AddGraph("graph2", graph2)
 
 	// Connect with transformation
-	err := cg.Connect("graph1", "output1", "graph2", "input2", func(state any) any {
-		m := state.(map[string]any)
-		m["transformed"] = true
-		return m
+	err := cg.Connect("graph1", "output1", "graph2", "input2", func(state map[string]any) map[string]any {
+		state["transformed"] = true
+		return state
 	})
 
 	assert.NoError(t, err)
@@ -121,7 +120,7 @@ func TestCompositeGraph_Connect(t *testing.T) {
 }
 
 func TestCompositeGraph_Compile(t *testing.T) {
-	cg := NewCompositeGraph()
+	cg := NewCompositeGraph[map[string]any]()
 
 	// Add a simple graph
 	simpleGraph := NewStateGraph[map[string]any]()
@@ -142,14 +141,10 @@ func TestCompositeGraph_Compile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, runnable)
 
-	// Test execution - this will fail because the subgraph doesn't have proper edges set up
-	// but the compilation should succeed
+	// Test execution
 	_, err = runnable.Invoke(context.Background(), map[string]any{})
-	// We expect this to fail due to graph structure issues
-	if err == nil {
-		t.Log("Unexpected success - but compilation worked")
-	} else {
-		t.Logf("Expected execution error: %v", err)
+	if err != nil {
+		t.Logf("Execution error (expected if graph structure issues): %v", err)
 	}
 }
 
@@ -157,12 +152,11 @@ func TestNewRecursiveSubgraph(t *testing.T) {
 	// Create recursive subgraph with max depth of 3 and condition on count
 	maxDepth := 3
 
-	rs := NewRecursiveSubgraph(
+	rs := NewRecursiveSubgraph[map[string]any](
 		"recursive",
 		maxDepth,
-		func(state any, depth int) bool {
-			m := state.(map[string]any)
-			currentCount := m["count"].(int)
+		func(state map[string]any, depth int) bool {
+			currentCount, _ := state["count"].(int)
 			return currentCount < 2 // Recurse twice
 		},
 	)
@@ -173,13 +167,10 @@ func TestNewRecursiveSubgraph(t *testing.T) {
 }
 
 func TestRecursiveSubgraph_Execute(t *testing.T) {
-	callCount := 0
-
-	rs := NewRecursiveSubgraph(
+	rs := NewRecursiveSubgraph[map[string]any](
 		"recursive",
 		3,
-		func(state any, depth int) bool {
-			callCount++
+		func(state map[string]any, depth int) bool {
 			return depth < 2 // Recurse twice
 		},
 	)
@@ -202,15 +193,14 @@ func TestRecursiveSubgraph_Execute(t *testing.T) {
 	result, err := rs.Execute(ctx, initialState)
 	assert.NoError(t, err)
 
-	m := result.(map[string]any)
-	assert.Equal(t, 2, m["count"], "Should have counted twice")
+	assert.Equal(t, 2, result["count"], "Should have counted twice")
 }
 
 func TestRecursiveSubgraph_MaxDepth(t *testing.T) {
-	rs := NewRecursiveSubgraph(
+	rs := NewRecursiveSubgraph[map[string]any](
 		"recursive",
 		2, // Very shallow max depth
-		func(state any, depth int) bool {
+		func(state map[string]any, depth int) bool {
 			return true // Always recurse
 		},
 	)

@@ -101,9 +101,9 @@ doc: https://cloud.baidu.com/doc/qianfan-api/s/3m9b5lqft`, client.ErrNotSetAuth)
 	}
 
 	return &LLM{
-		chatLLM:         chatLLM,
-		embeddingClient: embeddingClient,
-		model:           options.modelName,
+		chatLLM:          chatLLM,
+		embeddingClient:  embeddingClient,
+		model:            options.modelName,
 		CallbacksHandler: options.callbacksHandler,
 	}, nil
 }

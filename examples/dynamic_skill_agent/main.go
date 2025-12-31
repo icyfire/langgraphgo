@@ -35,7 +35,7 @@ func main() {
 
 	// 3. Create Agent with Skill Selection
 	// We pass an empty list of initial tools, as we rely on dynamic skill selection
-	agent, err := prebuilt.CreateAgent(llm, []tools.Tool{},
+	agent, err := prebuilt.CreateAgentMap(llm, []tools.Tool{},
 		prebuilt.WithSkillDir(skillsDir),
 		prebuilt.WithVerbose(true),
 		prebuilt.WithSystemMessage("You are a helpful assistant."),

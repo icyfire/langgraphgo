@@ -8,37 +8,24 @@ import (
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-// UserConfig represents custom configuration passed at runtime
-type UserConfig struct {
-	UserID    string
-	RequestID string
-	Verbose   bool
-}
-
 func main() {
-	// Create a new graph
-	g := graph.NewStateGraph()
+	// Create a new state graph with map state
+	g := graph.NewStateGraph[map[string]any]()
 
-	// Define a node that uses the configuration
-	g.AddNode("process", "process", func(ctx context.Context, state any) (any, error) {
-		// Retrieve config from context
+	g.AddNode("process", "process", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		// Access configuration from context
 		config := graph.GetConfig(ctx)
-
-		// Access standard config fields
-		if threadID, ok := config.Configurable["thread_id"]; ok {
-			fmt.Printf("[Node] Processing for Thread ID: %v\n", threadID)
+		limit := 5 // Default
+		if config != nil && config.Configurable != nil {
+			if val, ok := config.Configurable["limit"].(int); ok {
+				limit = val
+			}
 		}
 
-		// Access custom metadata if available
-		if userID, ok := config.Metadata["user_id"]; ok {
-			fmt.Printf("[Node] User ID: %v\n", userID)
-		}
-
-		if reqID, ok := config.Metadata["request_id"]; ok {
-			fmt.Printf("[Node] Request ID: %v\n", reqID)
-		}
-
-		return fmt.Sprintf("Processed for %v", config.Metadata["user_id"]), nil
+		fmt.Printf("Processing with limit: %d\n", limit)
+		state["processed"] = true
+		state["limit_used"] = limit
+		return state, nil
 	})
 
 	g.SetEntryPoint("process")
@@ -49,23 +36,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Prepare runtime configuration
+	// Run with limit 3 (via config)
 	config := &graph.Config{
-		Configurable: map[string]any{
-			"thread_id": "thread-123",
-		},
-		Metadata: map[string]any{
-			"user_id":    "alice",
-			"request_id": "req-456",
-			"verbose":    true,
-		},
+		Configurable: map[string]any{"limit": 3},
 	}
+	res, _ := runnable.InvokeWithConfig(context.Background(), map[string]any{"input": "start"}, config)
+	fmt.Printf("Result with limit 3: %v\n", res)
 
-	fmt.Println("=== Running with Configuration ===")
-	res, err := runnable.InvokeWithConfig(context.Background(), "start", config)
-	if err != nil {
-		log.Fatal(err)
+	// Run with limit 10 (via config)
+	config2 := &graph.Config{
+		Configurable: map[string]any{"limit": 10},
 	}
-
-	fmt.Printf("Result: %v\n", res)
+	res2, _ := runnable.InvokeWithConfig(context.Background(), map[string]any{"input": "start"}, config2)
+	fmt.Printf("Result with limit 10: %v\n", res2)
 }

@@ -34,7 +34,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
 	"github.com/tmc/langchaingo/llms"
@@ -172,9 +171,8 @@ func (m *MarketSimulator) Copy() *MarketSimulator {
 
 // ProposeActionNode observes the market and proposes a high-level strategy
 // This is the "OBSERVE -> PROPOSE" step of the mental loop
-func ProposeActionNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func ProposeActionNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("\n--- 🧐 Analyst Proposing Action ---")
 
@@ -190,7 +188,7 @@ REASONING: [brief reasoning for the proposed strategy]`,
 		agentState.RealMarket.GetStateString())
 
 	// Call LLM
-	llm := stateMap["llm"].(llms.Model)
+	llm := state["llm"].(llms.Model)
 	resp, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("analyst LLM call failed: %w", err)
@@ -200,17 +198,16 @@ REASONING: [brief reasoning for the proposed strategy]`,
 	proposal := parseProposedAction(resp)
 	agentState.ProposedAction = proposal
 
-	fmt.Printf("[yellow]Proposal:[yellow] %s. [italic]Reason: %s[/italic]\n",
+	fmt.Printf("Proposal: %s. Reason: %s\n",
 		proposal.Strategy, proposal.Reasoning)
 
-	return stateMap, nil
+	return state, nil
 }
 
 // RunSimulationNode runs the proposed strategy in a sandboxed simulation
 // This is the "SIMULATE" step of the mental loop
-func RunSimulationNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func RunSimulationNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("\n--- 🤖 Running Simulations ---")
 
@@ -267,16 +264,15 @@ func RunSimulationNode(ctx context.Context, state any) (any, error) {
 	}
 
 	agentState.SimulationResults = results
-	fmt.Println("[cyan]Simulation complete. Results will be passed to the risk manager.[cyan]")
+	fmt.Println("Simulation complete. Results will be passed to the risk manager.")
 
-	return stateMap, nil
+	return state, nil
 }
 
 // RefineAndDecideNode analyzes simulation results and makes a final decision
 // This is the "ASSESS & REFINE" step of the mental loop
-func RefineAndDecideNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func RefineAndDecideNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("\n--- 🧠 Risk Manager Refining Decision ---")
 
@@ -337,38 +333,38 @@ REASONING: [final reasoning, referencing simulation results]`,
 		int(positiveCount), len(agentState.SimulationResults))
 
 	// Call LLM
-	llm := stateMap["llm"].(llms.Model)
+	llm := state["llm"].(llms.Model)
 	resp, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("risk manager LLM call failed: %w", err)
 	}
 
 	// Parse the response
+
 	decision := parseFinalDecision(resp)
 	agentState.FinalDecision = decision
 
-	fmt.Printf("[green]Final Decision:[green] %s %.0f shares. [italic]Reason: %s[/italic]\n",
+	fmt.Printf("Final Decision: %s %.0f shares. Reason: %s\n",
 		decision.Action, decision.Amount, decision.Reasoning)
 
-	return stateMap, nil
+	return state, nil
 }
 
 // ExecuteInRealWorldNode executes the final decision in the real market
 // This is the "EXECUTE" step of the mental loop
-func ExecuteInRealWorldNode(ctx context.Context, state any) (any, error) {
-	stateMap := state.(map[string]any)
-	agentState := stateMap["agent_state"].(*AgentState)
+func ExecuteInRealWorldNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	agentState := state["agent_state"].(*AgentState)
 
 	fmt.Println("\n--- 🚀 Executing in Real World ---")
 
 	decision := agentState.FinalDecision
 	realMarket := agentState.RealMarket
 
-	fmt.Printf("[bold]Before:[bold] %s\n", realMarket.GetStateString())
+	fmt.Printf("Before: %s\n", realMarket.GetStateString())
 	realMarket.Step(decision.Action, decision.Amount)
-	fmt.Printf("[bold]After:[bold] %s\n", realMarket.GetStateString())
+	fmt.Printf("After: %s\n", realMarket.GetStateString())
 
-	return stateMap, nil
+	return state, nil
 }
 
 // ==================== Parsing Helpers ====================
@@ -495,17 +491,14 @@ func main() {
 	fmt.Println("Architecture: OBSERVE -> PROPOSE -> SIMULATE -> REFINE -> EXECUTE")
 	fmt.Println()
 
-	// Initialize random seed
-	rand.Seed(time.Now().UnixNano())
-
 	// Create LLM
 	llm, err := openai.New()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Create the mental loop graph
-	workflow := graph.NewStateGraph()
+	// Create the mental loop graph with map state
+	workflow := graph.NewStateGraph[map[string]any]()
 
 	// Add nodes
 	workflow.AddNode("propose", "Observe and propose action", ProposeActionNode)
@@ -561,8 +554,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Mental loop execution failed: %v", err)
 	}
-	resultMap := result.(map[string]any)
-	agentState = resultMap["agent_state"].(*AgentState)
+	agentState = result["agent_state"].(*AgentState)
 
 	// Day 2: Bad News
 	fmt.Println("\n--- Day 2: Bad News Hits! ---")
@@ -581,7 +573,7 @@ func main() {
 
 	// Print final summary
 	fmt.Println("\n=== 📊 Final Results ===")
-	finalState := result.(map[string]any)["agent_state"].(*AgentState)
+	finalState := result["agent_state"].(*AgentState)
 	fmt.Printf("Final Market State: %s\n", finalState.RealMarket.GetStateString())
 
 	initialValue := 10000.0
@@ -596,9 +588,4 @@ func main() {
 	fmt.Println("2. Assess risks before committing to real-world actions")
 	fmt.Println("3. Refine strategies based on what-if analysis")
 	fmt.Println("4. Make more nuanced, safer decisions in dynamic environments")
-	fmt.Println()
-	fmt.Println("This pattern is essential for high-stakes domains like:")
-	fmt.Println("- Robotics (simulating movements before executing)")
-	fmt.Println("- Finance (testing trades before real execution)")
-	fmt.Println("- Healthcare (evaluating treatments before application)")
 }

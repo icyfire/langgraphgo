@@ -54,8 +54,8 @@ func NewHealthAnalysisAgent(apiKey, baseURL string, config *AgentConfig, verbose
 }
 
 // CreateAnalysisGraph 创建分析工作流图
-func (a *HealthAnalysisAgent) CreateAnalysisGraph() (*graph.StateRunnableUntyped error) {
-	workflow := graph.NewStateGraph()
+func (a *HealthAnalysisAgent) CreateAnalysisGraph() (*graph.StateRunnable[map[string]any], error) {
+	workflow := graph.NewStateGraph[map[string]any]()
 
 	// 定义状态schema
 	schema := graph.NewMapSchema()
@@ -67,17 +67,13 @@ func (a *HealthAnalysisAgent) CreateAnalysisGraph() (*graph.StateRunnableUntyped
 	workflow.SetSchema(schema)
 
 	// 添加节点：数据提取
-	workflow.AddNode("extract_data", "从报告文本中提取结构化数据", func(ctx context.Context, state any) (any, error) {
-		return a.extractDataNode(ctx, state)
-	})
+	workflow.AddNode("extract_data", "从报告文本中提取结构化数据", a.extractDataNode)
 
 	// 添加节点：分析报告
-	workflow.AddNode("analyze_report", "分析血液报告并生成健康洞察", func(ctx context.Context, state any) (any, error) {
-		return a.analyzeReportNode(ctx, state)
-	})
+	workflow.AddNode("analyze_report", "分析血液报告并生成健康洞察", a.analyzeReportNode)
 
 	// 添加节点：完成
-	workflow.AddNode("finish", "完成分析", func(ctx context.Context, state any) (any, error) {
+	workflow.AddNode("finish", "完成分析", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		if a.verbose {
 			fmt.Println("✅ 分析完成")
 		}
@@ -94,13 +90,8 @@ func (a *HealthAnalysisAgent) CreateAnalysisGraph() (*graph.StateRunnableUntyped
 }
 
 // extractDataNode 数据提取节点
-func (a *HealthAnalysisAgent) extractDataNode(ctx context.Context, state any) (any, error) {
-	mState, ok := state.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid state type")
-	}
-
-	reportText, ok := mState["report_text"].(string)
+func (a *HealthAnalysisAgent) extractDataNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	reportText, ok := state["report_text"].(string)
 	if !ok || reportText == "" {
 		return map[string]any{
 			"error": "报告文本为空",
@@ -157,14 +148,9 @@ func (a *HealthAnalysisAgent) extractDataNode(ctx context.Context, state any) (a
 }
 
 // analyzeReportNode 分析报告节点
-func (a *HealthAnalysisAgent) analyzeReportNode(ctx context.Context, state any) (any, error) {
-	mState, ok := state.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid state type")
-	}
-
-	reportText := mState["report_text"].(string)
-	extractedData, _ := mState["extracted_data"].(map[string]any)
+func (a *HealthAnalysisAgent) analyzeReportNode(ctx context.Context, state map[string]any) (map[string]any, error) {
+	reportText := state["report_text"].(string)
+	extractedData, _ := state["extracted_data"].(map[string]any)
 
 	if a.verbose {
 		fmt.Println("🔍 正在进行健康分析...")
@@ -252,10 +238,9 @@ func (a *HealthAnalysisAgent) Analyze(ctx context.Context, reportText string) (m
 		fmt.Println("=== 分析完成 ===\n")
 	}
 
-	resultMap := result.(map[string]any)
-	resultMap["processing_time_ms"] = processingTime.Milliseconds()
+	result["processing_time_ms"] = processingTime.Milliseconds()
 
-	return resultMap, nil
+	return result, nil
 }
 
 // Helper functions

@@ -9,9 +9,10 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
-func TestToolNode(t *testing.T) {
+func TestToolNodeMap(t *testing.T) {
 	mockTool := &MockTool{name: "test-tool"}
-	toolNode := NewToolNode([]tools.Tool{mockTool})
+	executor := NewToolExecutor([]tools.Tool{mockTool})
+	node := ToolNodeMap(executor)
 
 	// Construct state with AIMessage containing ToolCall
 	toolCall := llms.ToolCall{
@@ -35,13 +36,10 @@ func TestToolNode(t *testing.T) {
 	}
 
 	// Invoke ToolNode
-	res, err := toolNode.Invoke(context.Background(), state)
+	res, err := node(context.Background(), state)
 	assert.NoError(t, err)
 
-	// Verify result - ToolNode returns any, so we need type assertion
-	mState, ok := res.(map[string]any)
-	assert.True(t, ok)
-	msgs, ok := mState["messages"].([]llms.MessageContent)
+	msgs, ok := res["messages"].([]llms.MessageContent)
 	assert.True(t, ok)
 	assert.Len(t, msgs, 1)
 

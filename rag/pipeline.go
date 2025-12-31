@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -85,25 +86,21 @@ type ragStateSchema struct{}
 
 func (s *ragStateSchema) Init() map[string]any {
 	return map[string]any{
-		"query": "",
-		"context": "",
-		"answer": "",
-		"documents": []Document{},
+		"query":               "",
+		"context":             "",
+		"answer":              "",
+		"documents":           []Document{},
 		"retrieved_documents": []Document{},
-		"ranked_documents": []Document{},
-		"citations": []string{},
-		"metadata": make(map[string]any),
+		"ranked_documents":    []Document{},
+		"citations":           []string{},
+		"metadata":            make(map[string]any),
 	}
 }
 
 func (s *ragStateSchema) Update(current, new map[string]any) (map[string]any, error) {
 	result := make(map[string]any)
-	for k, v := range current {
-		result[k] = v
-	}
-	for k, v := range new {
-		result[k] = v
-	}
+	maps.Copy(result, current)
+	maps.Copy(result, new)
 	return result, nil
 }
 

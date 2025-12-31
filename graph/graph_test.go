@@ -70,7 +70,7 @@ func TestStateGraph(t *testing.T) {
 	}{
 		{
 			name: "Simple graph",
-			buildGraph: func() *graph.StateGraph[[]llms.MessageContent]{
+			buildGraph: func() *graph.StateGraph[[]llms.MessageContent] {
 				g := graph.NewStateGraph[[]llms.MessageContent]()
 				g.AddNode("node1", "node1", func(_ context.Context, state []llms.MessageContent) ([]llms.MessageContent, error) {
 					return append(state, llms.TextParts("ai", "Node 1")), nil
@@ -93,7 +93,7 @@ func TestStateGraph(t *testing.T) {
 		},
 		{
 			name: "Entry point not set",
-			buildGraph: func() *graph.StateGraph[[]llms.MessageContent]{
+			buildGraph: func() *graph.StateGraph[[]llms.MessageContent] {
 				g := graph.NewStateGraph[[]llms.MessageContent]()
 				g.AddNode("node1", "node1", func(_ context.Context, state []llms.MessageContent) ([]llms.MessageContent, error) {
 					return state, nil
@@ -104,7 +104,7 @@ func TestStateGraph(t *testing.T) {
 		},
 		{
 			name: "Node not found",
-			buildGraph: func() *graph.StateGraph[[]llms.MessageContent]{
+			buildGraph: func() *graph.StateGraph[[]llms.MessageContent] {
 				g := graph.NewStateGraph[[]llms.MessageContent]()
 				g.AddNode("node1", "node1", func(_ context.Context, state []llms.MessageContent) ([]llms.MessageContent, error) {
 					return state, nil
@@ -117,7 +117,7 @@ func TestStateGraph(t *testing.T) {
 		},
 		{
 			name: "No outgoing edge",
-			buildGraph: func() *graph.StateGraph[[]llms.MessageContent]{
+			buildGraph: func() *graph.StateGraph[[]llms.MessageContent] {
 				g := graph.NewStateGraph[[]llms.MessageContent]()
 				g.AddNode("node1", "node1", func(_ context.Context, state []llms.MessageContent) ([]llms.MessageContent, error) {
 					return state, nil
@@ -129,7 +129,7 @@ func TestStateGraph(t *testing.T) {
 		},
 		{
 			name: "Error in node function",
-			buildGraph: func() *graph.StateGraph[[]llms.MessageContent]{
+			buildGraph: func() *graph.StateGraph[[]llms.MessageContent] {
 				g := graph.NewStateGraph[[]llms.MessageContent]()
 				g.AddNode("node1", "node1", func(_ context.Context, _ []llms.MessageContent) ([]llms.MessageContent, error) {
 					return nil, errors.New("node error")

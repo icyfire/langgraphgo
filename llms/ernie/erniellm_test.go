@@ -463,7 +463,7 @@ func TestLLM_ToolCall(t *testing.T) {
 						},
 						"unit": map[string]any{
 							"type":        "string",
-							"enum":         []string{"celsius", "fahrenheit"},
+							"enum":        []string{"celsius", "fahrenheit"},
 							"description": "The temperature unit to use",
 						},
 					},
@@ -743,4 +743,3 @@ func TestLLM_MultiToolConversation(t *testing.T) {
 		}
 	}
 }
-

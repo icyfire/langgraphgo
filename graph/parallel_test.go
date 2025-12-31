@@ -13,26 +13,36 @@ import (
 func TestParallelNodes(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Track execution order
 	var counter int32
 
 	// Add parallel nodes
-	parallelFuncs := make(map[string]func(context.Context, any) (any, error))
+	parallelFuncs := make(map[string]func(context.Context, map[string]any) (map[string]any, error))
 	for i := range 5 {
 		id := fmt.Sprintf("worker_%d", i)
-		parallelFuncs[id] = func(workerID string) func(context.Context, any) (any, error) {
-			return func(ctx context.Context, state any) (any, error) {
+		parallelFuncs[id] = func(workerID string) func(context.Context, map[string]any) (map[string]any, error) {
+			return func(ctx context.Context, state map[string]any) (map[string]any, error) {
 				// Simulate work
 				time.Sleep(10 * time.Millisecond)
 				atomic.AddInt32(&counter, 1)
-				return fmt.Sprintf("result_%s", workerID), nil
+				return map[string]any{"res": fmt.Sprintf("result_%s", workerID)}, nil
 			}
 		}(id)
 	}
 
-	g.AddParallelNodes("parallel_group", parallelFuncs)
+	// Merger function
+	merger := func(results []map[string]any) map[string]any {
+		// Combine results into a single map under "results" key
+		res := make([]any, len(results))
+		for i, r := range results {
+			res[i] = r["res"]
+		}
+		return map[string]any{"results": res}
+	}
+
+	g.AddParallelNodes("parallel_group", parallelFuncs, merger)
 	g.AddEdge("parallel_group", graph.END)
 	g.SetEntryPoint("parallel_group")
 
@@ -60,25 +70,18 @@ func TestParallelNodes(t *testing.T) {
 		t.Logf("Warning: Parallel execution took %v, might not be parallel", duration)
 	}
 
-	// Check results - result might be an array or a map depending on implementation
-	// For AddParallelNodes, the result is typically wrapped in map[string]any
-	// The actual array should be in some key of the map
+	// Check results
 	t.Logf("Result: %v (type: %T)", result, result)
 
-	// Try to extract results from common keys
 	var results []any
-	if val, ok := result["value"]; ok {
-		if arr, ok := val.([]any); ok {
-			results = arr
-		}
-	} else if val, ok := result["results"]; ok {
+	if val, ok := result["results"]; ok {
 		if arr, ok := val.([]any); ok {
 			results = arr
 		}
 	}
 
 	if results == nil {
-		t.Skip("Skipping results check - parallel node result structure needs to be verified")
+		t.Errorf("Expected results to be present, got %v", result)
 		return
 	}
 	if len(results) != 5 {
@@ -89,35 +92,35 @@ func TestParallelNodes(t *testing.T) {
 func TestMapReduceNode(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Create map functions that process parts of data
-	mapFuncs := map[string]func(context.Context, any) (any, error){
-		"map1": func(ctx context.Context, state any) (any, error) {
-			nums := state.([]int)
+	mapFuncs := map[string]func(context.Context, map[string]any) (map[string]any, error){
+		"map1": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			nums := state["input"].([]int)
 			sum := 0
 			for i := 0; i < len(nums)/2; i++ {
 				sum += nums[i]
 			}
-			return sum, nil
+			return map[string]any{"partial": sum}, nil
 		},
-		"map2": func(ctx context.Context, state any) (any, error) {
-			nums := state.([]int)
+		"map2": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			nums := state["input"].([]int)
 			sum := 0
 			for i := len(nums) / 2; i < len(nums); i++ {
 				sum += nums[i]
 			}
-			return sum, nil
+			return map[string]any{"partial": sum}, nil
 		},
 	}
 
 	// Reducer function
-	reducer := func(results []any) (any, error) {
+	reducer := func(results []map[string]any) (map[string]any, error) {
 		total := 0
 		for _, r := range results {
-			total += r.(int)
+			total += r["partial"].(int)
 		}
-		return total, nil
+		return map[string]any{"value": total}, nil
 	}
 
 	g.AddMapReduceNode("sum_parallel", mapFuncs, reducer)
@@ -129,14 +132,14 @@ func TestMapReduceNode(t *testing.T) {
 		t.Fatalf("Failed to compile: %v", err)
 	}
 
-	// Test with array of numbers - wrap in map[string]any
+	// Test with array of numbers
 	input := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	result, err := runnable.Invoke(context.Background(), map[string]any{"input": input})
 	if err != nil {
 		t.Fatalf("Execution failed: %v", err)
 	}
 
-	// Extract result - AddNodeUntyped wraps output in map[string]any{"value": ...}
+	// Extract result
 	var actualSum int
 	if val, ok := result["value"]; ok {
 		if v, ok := val.(int); ok {
@@ -153,39 +156,50 @@ func TestMapReduceNode(t *testing.T) {
 func TestFanOutFanIn(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Source node
-	g.AddNodeUntyped("source", "source", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("source", "source", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return state, nil
 	})
 
 	// Worker functions
-	workers := map[string]func(context.Context, any) (any, error){
-		"worker1": func(ctx context.Context, state any) (any, error) {
-			n := state.(int)
-			return n * 2, nil
+	workers := map[string]func(context.Context, map[string]any) (map[string]any, error){
+		"worker1": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			n := state["input"].(int)
+			return map[string]any{"res": n * 2}, nil
 		},
-		"worker2": func(ctx context.Context, state any) (any, error) {
-			n := state.(int)
-			return n * 3, nil
+		"worker2": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			n := state["input"].(int)
+			return map[string]any{"res": n * 3}, nil
 		},
-		"worker3": func(ctx context.Context, state any) (any, error) {
-			n := state.(int)
-			return n * 4, nil
+		"worker3": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			n := state["input"].(int)
+			return map[string]any{"res": n * 4}, nil
 		},
 	}
 
-	// Collector function
-	collector := func(results []any) (any, error) {
+	// Aggregator for FanOutFanIn
+	aggregator := func(results []map[string]any) map[string]any {
+		// Collect "res" values into a slice under "values" key
+		vals := make([]any, len(results))
+		for i, r := range results {
+			vals[i] = r["res"]
+		}
+		return map[string]any{"values": vals}
+	}
+
+	// Collector function - receives the state produced by aggregator
+	collector := func(state map[string]any) (map[string]any, error) {
+		results := state["values"].([]any)
 		sum := 0
 		for _, r := range results {
 			sum += r.(int)
 		}
-		return sum, nil
+		return map[string]any{"value": sum}, nil
 	}
 
-	g.FanOutFanIn("source", []string{"worker1", "worker2", "worker3"}, "collector", workers, collector)
+	g.FanOutFanIn("source", []string{"worker1", "worker2", "worker3"}, "collector", workers, aggregator, collector)
 	g.AddEdge("collector", graph.END)
 	g.SetEntryPoint("source")
 
@@ -215,22 +229,26 @@ func TestFanOutFanIn(t *testing.T) {
 func TestParallelErrorHandling(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Add parallel nodes where one fails
-	parallelFuncs := map[string]func(context.Context, any) (any, error){
-		"success1": func(ctx context.Context, state any) (any, error) {
-			return "ok1", nil
+	parallelFuncs := map[string]func(context.Context, map[string]any) (map[string]any, error){
+		"success1": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			return map[string]any{"ok": 1}, nil
 		},
-		"failure": func(ctx context.Context, state any) (any, error) {
+		"failure": func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("deliberate failure")
 		},
-		"success2": func(ctx context.Context, state any) (any, error) {
-			return "ok2", nil
+		"success2": func(ctx context.Context, state map[string]any) (map[string]any, error) {
+			return map[string]any{"ok": 2}, nil
 		},
 	}
 
-	g.AddParallelNodes("parallel_with_error", parallelFuncs)
+	merger := func(results []map[string]any) map[string]any {
+		return map[string]any{}
+	}
+
+	g.AddParallelNodes("parallel_with_error", parallelFuncs, merger)
 	g.AddEdge("parallel_with_error", graph.END)
 	g.SetEntryPoint("parallel_with_error")
 
@@ -248,29 +266,31 @@ func TestParallelErrorHandling(t *testing.T) {
 func TestParallelContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Add parallel nodes with different delays
-	parallelFuncs := map[string]func(context.Context, any) (any, error){
-		"fast": func(ctx context.Context, _ any) (any, error) {
+	parallelFuncs := map[string]func(context.Context, map[string]any) (map[string]any, error){
+		"fast": func(ctx context.Context, _ map[string]any) (map[string]any, error) {
 			select {
 			case <-time.After(10 * time.Millisecond):
-				return "fast_done", nil
+				return map[string]any{"fast": "done"}, nil
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
 		},
-		"slow": func(ctx context.Context, _ any) (any, error) {
+		"slow": func(ctx context.Context, _ map[string]any) (map[string]any, error) {
 			select {
 			case <-time.After(1 * time.Second):
-				return "slow_done", nil
+				return map[string]any{"slow": "done"}, nil
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
 		},
 	}
 
-	g.AddParallelNodes("parallel_cancellable", parallelFuncs)
+	merger := func(results []map[string]any) map[string]any { return map[string]any{} }
+
+	g.AddParallelNodes("parallel_cancellable", parallelFuncs, merger)
 	g.AddEdge("parallel_cancellable", graph.END)
 	g.SetEntryPoint("parallel_cancellable")
 
@@ -298,24 +318,26 @@ func TestParallelContextCancellation(t *testing.T) {
 }
 
 func BenchmarkParallelExecution(b *testing.B) {
-	g := graph.NewStateGraphUntyped()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// Create many parallel workers
-	workers := make(map[string]func(context.Context, any) (any, error))
+	workers := make(map[string]func(context.Context, map[string]any) (map[string]any, error))
 	for i := range 10 {
 		workerID := fmt.Sprintf("worker_%d", i)
-		workers[workerID] = func(ctx context.Context, state any) (any, error) {
+		workers[workerID] = func(ctx context.Context, state map[string]any) (map[string]any, error) {
 			// Simulate some work
-			n := state.(int)
+			n := state["input"].(int)
 			result := 0
 			for j := range 100 {
 				result += n * j
 			}
-			return result, nil
+			return map[string]any{"res": result}, nil
 		}
 	}
 
-	g.AddParallelNodes("parallel", workers)
+	merger := func(results []map[string]any) map[string]any { return map[string]any{} }
+
+	g.AddParallelNodes("parallel", workers, merger)
 	g.AddEdge("parallel", graph.END)
 	g.SetEntryPoint("parallel")
 
@@ -365,7 +387,7 @@ func BenchmarkSequentialVsParallel(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = runnable.Invoke(ctx, i)  // StateGraph[int] expects int
+			_, _ = runnable.Invoke(ctx, i) // StateGraph[int] expects int
 		}
 	})
 
@@ -391,7 +413,7 @@ func BenchmarkSequentialVsParallel(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = runnable.Invoke(ctx, i)  // StateGraph[int] expects int, not map[string]any
+			_, _ = runnable.Invoke(ctx, i) // StateGraph[int] expects int, not map[string]any
 		}
 	})
 }

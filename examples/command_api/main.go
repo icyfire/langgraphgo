@@ -8,50 +8,38 @@ import (
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-// This example demonstrates the Command API for dynamic control flow.
-// Nodes can return a Command object to update state and determine the next node dynamically.
-
 func main() {
-	g := graph.NewStateGraph()
+	// Create a new state graph
+	g := graph.NewStateGraph[any]()
 
-	// Define schema
-	schema := graph.NewMapSchema()
-	schema.RegisterReducer("count", graph.OverwriteReducer)
-	g.SetSchema(schema)
-
-	// Node A: Decides where to go based on state
 	g.AddNode("router", "router", func(ctx context.Context, state any) (any, error) {
 		m := state.(map[string]any)
-		count := m["count"].(int)
-
-		if count > 5 {
-			// Dynamic Goto: Skip "process" and go straight to "end_high"
+		val := m["value"].(int)
+		if val > 10 {
 			return &graph.Command{
-				Update: map[string]any{"status": "high"},
 				Goto:   "end_high",
+				Update: map[string]any{"path": "high"},
 			}, nil
 		}
-
-		// Normal flow: Update state and let static edges handle it (or Goto "process")
 		return &graph.Command{
-			Update: map[string]any{"status": "normal"},
 			Goto:   "process",
+			Update: map[string]any{"path": "normal"},
 		}, nil
 	})
 
 	g.AddNode("process", "process", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("Executing Process Node")
-		return map[string]any{"processed": true}, nil
+		m := state.(map[string]any)
+		val := m["value"].(int)
+		return map[string]any{"value": val * 2}, nil
 	})
 
 	g.AddNode("end_high", "end_high", func(ctx context.Context, state any) (any, error) {
-		fmt.Println("Executing End High Node")
-		return map[string]any{"final": "high value"}, nil
+		m := state.(map[string]any)
+		val := m["value"].(int)
+		return map[string]any{"value": val + 100}, nil
 	})
 
 	g.SetEntryPoint("router")
-	// Note: We don't strictly need static edges from "router" if it always returns a Command with Goto.
-	// But for "process", we need an edge to END.
 	g.AddEdge("process", graph.END)
 	g.AddEdge("end_high", graph.END)
 
@@ -60,13 +48,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Case 1: Normal Flow
-	fmt.Println("--- Case 1: Count = 3 ---")
-	res, _ := runnable.Invoke(context.Background(), map[string]any{"count": 3})
-	fmt.Printf("Result: %v\n", res)
+	// Test 1: Normal path
+	fmt.Println("--- Test 1: Normal Path ---")
+	res1, _ := runnable.Invoke(context.Background(), map[string]any{"value": 5})
+	fmt.Printf("Result (value=5): %v\n", res1)
 
-	// Case 2: High Value Flow (Skip Process)
-	fmt.Println("\n--- Case 2: Count = 10 ---")
-	res, _ = runnable.Invoke(context.Background(), map[string]any{"count": 10})
-	fmt.Printf("Result: %v\n", res)
+	// Test 2: High path
+	fmt.Println("\n--- Test 2: High Path ---")
+	res2, _ := runnable.Invoke(context.Background(), map[string]any{"value": 15})
+	fmt.Printf("Result (value=15): %v\n", res2)
 }

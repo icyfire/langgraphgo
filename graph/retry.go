@@ -32,32 +32,33 @@ func DefaultRetryConfig() *RetryConfig {
 }
 
 // RetryNode wraps a node with retry logic
-type RetryNode struct {
-	node   Node
+type RetryNode[S any] struct {
+	node   TypedNode[S]
 	config *RetryConfig
 }
 
 // NewRetryNode creates a new retry node
-func NewRetryNode(node Node, config *RetryConfig) *RetryNode {
+func NewRetryNode[S any](node TypedNode[S], config *RetryConfig) *RetryNode[S] {
 	if config == nil {
 		config = DefaultRetryConfig()
 	}
-	return &RetryNode{
+	return &RetryNode[S]{
 		node:   node,
 		config: config,
 	}
 }
 
 // Execute runs the node with retry logic
-func (rn *RetryNode) Execute(ctx context.Context, state any) (any, error) {
+func (rn *RetryNode[S]) Execute(ctx context.Context, state S) (S, error) {
 	var lastErr error
+	var zero S
 	delay := rn.config.InitialDelay
 
 	for attempt := 1; attempt <= rn.config.MaxAttempts; attempt++ {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("retry cancelled: %w", ctx.Err())
+			return zero, fmt.Errorf("retry cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -71,7 +72,7 @@ func (rn *RetryNode) Execute(ctx context.Context, state any) (any, error) {
 
 		// Check if error is retryable
 		if rn.config.RetryableErrors != nil && !rn.config.RetryableErrors(err) {
-			return nil, fmt.Errorf("non-retryable error in %s: %w", rn.node.Name, err)
+			return zero, fmt.Errorf("non-retryable error in %s: %w", rn.node.Name, err)
 		}
 
 		// Don't sleep after the last attempt
@@ -82,54 +83,54 @@ func (rn *RetryNode) Execute(ctx context.Context, state any) (any, error) {
 				// Calculate next delay with backoff
 				delay = min(time.Duration(float64(delay)*rn.config.BackoffFactor), rn.config.MaxDelay)
 			case <-ctx.Done():
-				return nil, fmt.Errorf("retry cancelled during backoff: %w", ctx.Err())
+				return zero, fmt.Errorf("retry cancelled during backoff: %w", ctx.Err())
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("max retries (%d) exceeded for %s: %w",
+	return zero, fmt.Errorf("max retries (%d) exceeded for %s: %w",
 		rn.config.MaxAttempts, rn.node.Name, lastErr)
 }
 
 // AddNodeWithRetry adds a node with retry logic
-func (g *StateGraphUntyped) AddNodeWithRetry(
+func (g *StateGraph[S]) AddNodeWithRetry(
 	name string,
 	description string,
-	fn func(context.Context, any) (any, error),
+	fn func(context.Context, S) (S, error),
 	config *RetryConfig,
 ) {
-	node := Node{
+	node := TypedNode[S]{
 		Name:        name,
 		Description: description,
 		Function:    fn,
 	}
 	retryNode := NewRetryNode(node, config)
-	g.AddNodeUntyped(name, description, retryNode.Execute)
+	g.AddNode(name, description, retryNode.Execute)
 }
 
 // TimeoutNode wraps a node with timeout logic
-type TimeoutNode struct {
-	node    Node
+type TimeoutNode[S any] struct {
+	node    TypedNode[S]
 	timeout time.Duration
 }
 
 // NewTimeoutNode creates a new timeout node
-func NewTimeoutNode(node Node, timeout time.Duration) *TimeoutNode {
-	return &TimeoutNode{
+func NewTimeoutNode[S any](node TypedNode[S], timeout time.Duration) *TimeoutNode[S] {
+	return &TimeoutNode[S]{
 		node:    node,
 		timeout: timeout,
 	}
 }
 
 // Execute runs the node with timeout
-func (tn *TimeoutNode) Execute(ctx context.Context, state any) (any, error) {
+func (tn *TimeoutNode[S]) Execute(ctx context.Context, state S) (S, error) {
 	// Create a timeout context
 	timeoutCtx, cancel := context.WithTimeout(ctx, tn.timeout)
 	defer cancel()
 
 	// Channel for result
 	type result struct {
-		value any
+		value S
 		err   error
 	}
 	resultChan := make(chan result, 1)
@@ -145,24 +146,25 @@ func (tn *TimeoutNode) Execute(ctx context.Context, state any) (any, error) {
 	case res := <-resultChan:
 		return res.value, res.err
 	case <-timeoutCtx.Done():
-		return nil, fmt.Errorf("node %s timed out after %v", tn.node.Name, tn.timeout)
+		var zero S
+		return zero, fmt.Errorf("node %s timed out after %v", tn.node.Name, tn.timeout)
 	}
 }
 
 // AddNodeWithTimeout adds a node with timeout
-func (g *StateGraphUntyped) AddNodeWithTimeout(
+func (g *StateGraph[S]) AddNodeWithTimeout(
 	name string,
 	description string,
-	fn func(context.Context, any) (any, error),
+	fn func(context.Context, S) (S, error),
 	timeout time.Duration,
 ) {
-	node := Node{
+	node := TypedNode[S]{
 		Name:        name,
 		Description: description,
 		Function:    fn,
 	}
 	timeoutNode := NewTimeoutNode(node, timeout)
-	g.AddNodeUntyped(name, description, timeoutNode.Execute)
+	g.AddNode(name, description, timeoutNode.Execute)
 }
 
 // CircuitBreakerConfig configures circuit breaker behavior
@@ -183,8 +185,8 @@ const (
 )
 
 // CircuitBreaker implements the circuit breaker pattern
-type CircuitBreaker struct {
-	node            Node
+type CircuitBreaker[S any] struct {
+	node            TypedNode[S]
 	config          CircuitBreakerConfig
 	state           CircuitBreakerState
 	failures        int
@@ -194,8 +196,8 @@ type CircuitBreaker struct {
 }
 
 // NewCircuitBreaker creates a new circuit breaker
-func NewCircuitBreaker(node Node, config CircuitBreakerConfig) *CircuitBreaker {
-	return &CircuitBreaker{
+func NewCircuitBreaker[S any](node TypedNode[S], config CircuitBreakerConfig) *CircuitBreaker[S] {
+	return &CircuitBreaker[S]{
 		node:   node,
 		config: config,
 		state:  CircuitClosed,
@@ -203,7 +205,8 @@ func NewCircuitBreaker(node Node, config CircuitBreakerConfig) *CircuitBreaker {
 }
 
 // Execute runs the node with circuit breaker logic
-func (cb *CircuitBreaker) Execute(ctx context.Context, state any) (any, error) {
+func (cb *CircuitBreaker[S]) Execute(ctx context.Context, state S) (S, error) {
+	var zero S
 	// Check circuit state
 	switch cb.state {
 	case CircuitClosed:
@@ -214,13 +217,13 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, state any) (any, error) {
 			cb.state = CircuitHalfOpen
 			cb.halfOpenCalls = 0
 		} else {
-			return nil, fmt.Errorf("circuit breaker open for %s", cb.node.Name)
+			return zero, fmt.Errorf("circuit breaker open for %s", cb.node.Name)
 		}
 	case CircuitHalfOpen:
 		// Check if we've made too many calls in half-open state
 		if cb.halfOpenCalls >= cb.config.HalfOpenMaxCalls {
 			cb.state = CircuitOpen
-			return nil, fmt.Errorf("circuit breaker half-open limit reached for %s", cb.node.Name)
+			return zero, fmt.Errorf("circuit breaker half-open limit reached for %s", cb.node.Name)
 		}
 		cb.halfOpenCalls++
 	}
@@ -238,7 +241,7 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, state any) (any, error) {
 			cb.state = CircuitOpen
 		}
 
-		return nil, fmt.Errorf("circuit breaker error in %s: %w", cb.node.Name, err)
+		return zero, fmt.Errorf("circuit breaker error in %s: %w", cb.node.Name, err)
 	}
 
 	// Success
@@ -253,32 +256,32 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, state any) (any, error) {
 }
 
 // AddNodeWithCircuitBreaker adds a node with circuit breaker
-func (g *StateGraphUntyped) AddNodeWithCircuitBreaker(
+func (g *StateGraph[S]) AddNodeWithCircuitBreaker(
 	name string,
 	description string,
-	fn func(context.Context, any) (any, error),
+	fn func(context.Context, S) (S, error),
 	config CircuitBreakerConfig,
 ) {
-	node := Node{
+	node := TypedNode[S]{
 		Name:        name,
 		Description: description,
 		Function:    fn,
 	}
 	cb := NewCircuitBreaker(node, config)
-	g.AddNodeUntyped(name, description, cb.Execute)
+	g.AddNode(name, description, cb.Execute)
 }
 
 // RateLimiter implements rate limiting for nodes
-type RateLimiter struct {
-	node     Node
+type RateLimiter[S any] struct {
+	node     TypedNode[S]
 	maxCalls int
 	window   time.Duration
 	calls    []time.Time
 }
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(node Node, maxCalls int, window time.Duration) *RateLimiter {
-	return &RateLimiter{
+func NewRateLimiter[S any](node TypedNode[S], maxCalls int, window time.Duration) *RateLimiter[S] {
+	return &RateLimiter[S]{
 		node:     node,
 		maxCalls: maxCalls,
 		window:   window,
@@ -287,7 +290,7 @@ func NewRateLimiter(node Node, maxCalls int, window time.Duration) *RateLimiter 
 }
 
 // Execute runs the node with rate limiting
-func (rl *RateLimiter) Execute(ctx context.Context, state any) (any, error) {
+func (rl *RateLimiter[S]) Execute(ctx context.Context, state S) (S, error) {
 	now := time.Now()
 
 	// Remove old calls outside the window
@@ -304,7 +307,8 @@ func (rl *RateLimiter) Execute(ctx context.Context, state any) (any, error) {
 		// Calculate when we can make the next call
 		oldestCall := rl.calls[0]
 		waitTime := rl.window - now.Sub(oldestCall)
-		return nil, fmt.Errorf("rate limit exceeded for %s, retry after %v", rl.node.Name, waitTime)
+		var zero S
+		return zero, fmt.Errorf("rate limit exceeded for %s, retry after %v", rl.node.Name, waitTime)
 	}
 
 	// Record this call
@@ -315,20 +319,20 @@ func (rl *RateLimiter) Execute(ctx context.Context, state any) (any, error) {
 }
 
 // AddNodeWithRateLimit adds a node with rate limiting
-func (g *StateGraphUntyped) AddNodeWithRateLimit(
+func (g *StateGraph[S]) AddNodeWithRateLimit(
 	name string,
 	description string,
-	fn func(context.Context, any) (any, error),
+	fn func(context.Context, S) (S, error),
 	maxCalls int,
 	window time.Duration,
 ) {
-	node := Node{
+	node := TypedNode[S]{
 		Name:        name,
 		Description: description,
 		Function:    fn,
 	}
 	rl := NewRateLimiter(node, maxCalls, window)
-	g.AddNodeUntyped(name, description, rl.Execute)
+	g.AddNode(name, description, rl.Execute)
 }
 
 // ExponentialBackoffRetry implements exponential backoff with jitter

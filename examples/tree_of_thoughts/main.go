@@ -28,7 +28,7 @@ func NewRiverState(left, right map[string]bool, boatLoc, lastMove string) *River
 	}
 }
 
-// IsValid checks if the state is valid (no conflicts)
+// IsValid checks if the state is valid (no rule violations)
 func (s *RiverState) IsValid() bool {
 	// Check left bank
 	if s.LeftBank["wolf"] && s.LeftBank["goat"] && !s.LeftBank["farmer"] {
@@ -259,8 +259,8 @@ func main() {
 		Verbose:      true,
 	}
 
-	// Create agent
-	agent, err := prebuilt.CreateTreeOfThoughtsAgent(config)
+	// Create agent using map state convenience function
+	agent, err := prebuilt.CreateTreeOfThoughtsAgentMap(config)
 	if err != nil {
 		log.Fatalf("Failed to create Tree of Thoughts agent: %v", err)
 	}
@@ -274,18 +274,19 @@ func main() {
 
 	// Print solution
 	fmt.Println()
-	finalState := result.(map[string]any)
-	solution := finalState["solution"]
-
-	prebuilt.PrintSolution(solution)
+	solution, ok := result["solution"].(prebuilt.SearchPath)
+	if !ok || len(solution.States) == 0 {
+		fmt.Println("No solution found")
+	} else {
+		fmt.Println("=== Solution Found ===")
+		for i, s := range solution.States {
+			fmt.Printf("Step %d: %s\n", i, s.GetDescription())
+		}
+	}
 
 	fmt.Println("\n=== Analysis ===")
 	fmt.Println("Tree of Thoughts systematically explored the search space,")
 	fmt.Println("evaluating multiple possible paths at each step and pruning")
 	fmt.Println("invalid branches (where the wolf would eat the goat, or the")
 	fmt.Println("goat would eat the cabbage).")
-	fmt.Println()
-	fmt.Println("This demonstrates how ToT can solve constraint satisfaction")
-	fmt.Println("problems through intelligent search rather than relying on")
-	fmt.Println("the LLM's memorized knowledge.")
 }

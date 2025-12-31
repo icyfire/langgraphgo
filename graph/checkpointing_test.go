@@ -10,11 +10,6 @@ import (
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-const (
-	testNode   = "test_node"
-	testResult = "test_result"
-)
-
 func TestMemoryCheckpointStore_SaveAndLoad(t *testing.T) {
 	t.Parallel()
 
@@ -439,13 +434,13 @@ func TestCheckpointableRunnable_Basic(t *testing.T) {
 	t.Parallel()
 
 	// Create graph
-	g := graph.NewListenableStateGraphUntyped()
+	g := graph.NewListenableStateGraph[map[string]any]()
 
-	g.AddNodeUntyped("step1", "step1", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("step1", "step1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": "step1_result"}, nil
 	})
 
-	g.AddNodeUntyped("step2", "step2", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("step2", "step2", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": "step2_result"}, nil
 	})
 
@@ -469,7 +464,7 @@ func TestCheckpointableRunnable_Basic(t *testing.T) {
 		t.Fatalf("Execution failed: %v", err)
 	}
 
-	resultMap := result.(map[string]any)
+	resultMap := result
 	if resultMap["result"] != "step2_result" {
 		t.Errorf("Expected 'step2_result', got %v", resultMap)
 	}
@@ -507,8 +502,8 @@ func TestCheckpointableRunnable_Basic(t *testing.T) {
 func TestCheckpointableRunnable_ManualCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewListenableStateGraphUntyped()
-	g.AddNodeUntyped(testNode, testNode, func(ctx context.Context, state any) (any, error) {
+	g := graph.NewListenableStateGraph[map[string]any]()
+	g.AddNode(testNode, testNode, func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": testResult}, nil
 	})
 	g.AddEdge(testNode, graph.END)
@@ -556,8 +551,8 @@ func TestCheckpointableRunnable_ManualCheckpoint(t *testing.T) {
 func TestCheckpointableRunnable_LoadCheckpoint(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewListenableStateGraphUntyped()
-	g.AddNodeUntyped(testNode, testNode, func(ctx context.Context, state any) (any, error) {
+	g := graph.NewListenableStateGraph[map[string]any]()
+	g.AddNode(testNode, testNode, func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": testResult}, nil
 	})
 	g.AddEdge(testNode, graph.END)
@@ -608,8 +603,8 @@ func TestCheckpointableRunnable_LoadCheckpoint(t *testing.T) {
 func TestCheckpointableRunnable_ClearCheckpoints(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewListenableStateGraphUntyped()
-	g.AddNodeUntyped(testNode, testNode, func(ctx context.Context, state any) (any, error) {
+	g := graph.NewListenableStateGraph[map[string]any]()
+	g.AddNode(testNode, testNode, func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": testResult}, nil
 	})
 	g.AddEdge(testNode, graph.END)
@@ -666,9 +661,9 @@ func TestCheckpointableRunnable_ClearCheckpoints(t *testing.T) {
 func TestCheckpointableStateGraph_CompileCheckpointable(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewCheckpointableStateGraph()
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
-	g.AddNodeUntyped(testNode, testNode, func(ctx context.Context, state any) (any, error) {
+	g.AddNode(testNode, testNode, func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"result": testResult}, nil
 	})
 	g.AddEdge(testNode, graph.END)
@@ -685,7 +680,7 @@ func TestCheckpointableStateGraph_CompileCheckpointable(t *testing.T) {
 		t.Fatalf("Execution failed: %v", err)
 	}
 
-	resultMap := result.(map[string]any)
+	resultMap := result
 	if resultMap["result"] != testResult {
 		t.Errorf("Expected 'test_result', got %v", resultMap)
 	}
@@ -702,7 +697,7 @@ func TestCheckpointableStateGraph_CustomConfig(t *testing.T) {
 		MaxCheckpoints: 5,
 	}
 
-	g := graph.NewCheckpointableStateGraphWithConfig(config)
+	g := graph.NewCheckpointableStateGraphWithConfig[map[string]any](config)
 
 	// Verify config is set
 	actualConfig := g.GetCheckpointConfig()
@@ -726,25 +721,22 @@ func TestCheckpointing_Integration(t *testing.T) {
 	t.Parallel()
 
 	// Create checkpointable graph
-	g := graph.NewCheckpointableStateGraph()
+	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
 	// Build a multi-step pipeline
-	g.AddNodeUntyped("analyze", "analyze", func(ctx context.Context, state any) (any, error) {
-		m := state.(map[string]any)
-		m["analyzed"] = true
-		return m, nil
+	g.AddNode("analyze", "analyze", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["analyzed"] = true
+		return state, nil
 	})
 
-	g.AddNodeUntyped("process", "process", func(ctx context.Context, state any) (any, error) {
-		m := state.(map[string]any)
-		m["processed"] = true
-		return m, nil
+	g.AddNode("process", "process", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["processed"] = true
+		return state, nil
 	})
 
-	g.AddNodeUntyped("finalize", "finalize", func(ctx context.Context, state any) (any, error) {
-		m := state.(map[string]any)
-		m["finalized"] = true
-		return m, nil
+	g.AddNode("finalize", "finalize", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		state["finalized"] = true
+		return state, nil
 	})
 
 	g.AddEdge("analyze", "process")
@@ -770,7 +762,7 @@ func TestCheckpointing_Integration(t *testing.T) {
 	}
 
 	// Verify final result
-	finalState := result.(map[string]any)
+	finalState := result
 	if !finalState["analyzed"].(bool) {
 		t.Error("Expected analyzed to be true")
 	}
@@ -836,10 +828,10 @@ func TestCheckpointing_Integration(t *testing.T) {
 func TestCheckpointListener_ErrorHandling(t *testing.T) {
 	t.Parallel()
 
-	g := graph.NewListenableStateGraphUntyped()
+	g := graph.NewListenableStateGraph[map[string]any]()
 
 	// Node that will fail
-	g.AddNodeUntyped("failing_node", "failing_node", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("failing_node", "failing_node", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("simulated failure")
 	})
 

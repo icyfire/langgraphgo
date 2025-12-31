@@ -24,7 +24,7 @@ func TestMapSchema_Update(t *testing.T) {
 	newState1, err := schema.Update(initialState, update1)
 	assert.NoError(t, err)
 
-	state1 := newState1.(map[string]any)
+	state1 := newState1
 	assert.Equal(t, []string{"hello", "world"}, state1["messages"])
 	assert.Equal(t, 1, state1["count"])
 
@@ -36,7 +36,7 @@ func TestMapSchema_Update(t *testing.T) {
 	newState2, err := schema.Update(state1, update2)
 	assert.NoError(t, err)
 
-	state2 := newState2.(map[string]any)
+	state2 := newState2
 	assert.Equal(t, []string{"hello", "world"}, state2["messages"])
 	assert.Equal(t, 2, state2["count"])
 
@@ -49,7 +49,7 @@ func TestMapSchema_Update(t *testing.T) {
 	newState3, err := schema.Update(state2, update3)
 	assert.NoError(t, err)
 
-	state3 := newState3.(map[string]any)
+	state3 := newState3
 	assert.Equal(t, []string{"hello", "world", "!"}, state3["messages"])
 }
 
@@ -58,7 +58,7 @@ func TestStateGraph_Schema(t *testing.T) {
 
 	schema := NewMapSchema()
 	schema.RegisterReducer("messages", AppendReducer)
-	g.SetSchema(&MapSchemaAdapter{Schema: schema})
+	g.SetSchema(schema)
 
 	g.AddNode("A", "A", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{

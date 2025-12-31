@@ -68,7 +68,7 @@ func (pl *ProgressListener) SetNodeStep(nodeName, step string) {
 	pl.nodeSteps[nodeName] = step
 }
 
-// OnNodeEvent implements the NodeListenerTyped[map[string]any] interface
+// OnNodeEvent implements the NodeListener[map[string]any] interface
 func (pl *ProgressListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, state map[string]any, err error) {
 	pl.mutex.RLock()
 	customStep, hasCustom := pl.nodeSteps[nodeName]
@@ -163,7 +163,7 @@ func (ll *LoggingListener) WithState(enabled bool) *LoggingListener {
 	return ll
 }
 
-// OnNodeEvent implements the NodeListenerTyped[map[string]any] interface
+// OnNodeEvent implements the NodeListener[map[string]any] interface
 func (ll *LoggingListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, state map[string]any, err error) {
 	var level LogLevel
 	var prefix string
@@ -220,7 +220,7 @@ func NewMetricsListener() *MetricsListener {
 	}
 }
 
-// OnNodeEvent implements the NodeListenerTyped[map[string]any] interface
+// OnNodeEvent implements the NodeListener[map[string]any] interface
 func (ml *MetricsListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, _ map[string]any, _ error) {
 	ml.mutex.Lock()
 	defer ml.mutex.Unlock()
@@ -386,7 +386,7 @@ func (cl *ChatListener) SetNodeMessage(nodeName, message string) {
 	cl.nodeMessages[nodeName] = message
 }
 
-// OnNodeEvent implements the NodeListenerTyped[map[string]any] interface
+// OnNodeEvent implements the NodeListener[map[string]any] interface
 func (cl *ChatListener) OnNodeEvent(_ context.Context, event NodeEvent, nodeName string, _ map[string]any, err error) {
 	cl.mutex.RLock()
 	customMessage, hasCustom := cl.nodeMessages[nodeName]

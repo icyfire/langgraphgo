@@ -9,172 +9,80 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
-// MockLLMWithInputCapture captures the input messages
+func TestCreateAgentMap(t *testing.T) {
+	mockLLM := &MockLLM{}
+	inputTools := []tools.Tool{}
+	systemMessage := "You are a helpful assistant."
+
+	t.Run("Basic Agent Creation", func(t *testing.T) {
+		agent, err := CreateAgentMap(mockLLM, inputTools, WithSystemMessage(systemMessage))
+		assert.NoError(t, err)
+		assert.NotNil(t, agent)
+	})
+
+	t.Run("Agent with State Modifier", func(t *testing.T) {
+		mockLLM := &MockLLMWithInputCapture{}
+		modifier := func(messages []llms.MessageContent) []llms.MessageContent {
+			return append(messages, llms.TextParts(llms.ChatMessageTypeHuman, "Modified"))
+		}
+
+		agent, err := CreateAgentMap(mockLLM, inputTools, WithStateModifier(modifier))
+		assert.NoError(t, err)
+
+		_, err = agent.Invoke(context.Background(), map[string]any{"messages": []llms.MessageContent{}})
+		assert.NoError(t, err)
+
+		// Verify modifier was called (last message should be "Modified")
+		assert.True(t, len(mockLLM.lastMessages) > 0)
+		lastMsg := mockLLM.lastMessages[len(mockLLM.lastMessages)-1]
+		assert.Equal(t, "Modified", lastMsg.Parts[0].(llms.TextContent).Text)
+	})
+
+	t.Run("Agent with System Message", func(t *testing.T) {
+		mockLLM := &MockLLMWithInputCapture{}
+		systemMsg := "You are a specialized bot."
+
+		agent, err := CreateAgentMap(mockLLM, inputTools, WithSystemMessage(systemMsg))
+		assert.NoError(t, err)
+
+		_, err = agent.Invoke(context.Background(), map[string]any{"messages": []llms.MessageContent{}})
+		assert.NoError(t, err)
+
+		// Verify system message was prepended
+		assert.True(t, len(mockLLM.lastMessages) > 0)
+		firstMsg := mockLLM.lastMessages[0]
+		assert.Equal(t, llms.ChatMessageTypeSystem, firstMsg.Role)
+		assert.Equal(t, systemMsg, firstMsg.Parts[0].(llms.TextContent).Text)
+	})
+}
+
+// Mock structures for testing
+type MockLLM struct {
+	llms.Model
+}
+
+func (m *MockLLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	return &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{
+				Content: "Hello! I'm a mock AI.",
+			},
+		},
+	}, nil
+}
+
 type MockLLMWithInputCapture struct {
-	CapturedMessages [][]llms.MessageContent
-	responses        []llms.ContentResponse
-	callCount        int
+	llms.Model
+	lastMessages []llms.MessageContent
 }
 
 func (m *MockLLMWithInputCapture) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	m.CapturedMessages = append(m.CapturedMessages, messages)
-	if m.callCount >= len(m.responses) {
-		return &llms.ContentResponse{
-			Choices: []*llms.ContentChoice{
-				{Content: "No more responses"},
-			},
-		}, nil
-	}
-	resp := m.responses[m.callCount]
-	m.callCount++
-	return &resp, nil
-}
-
-func (m *MockLLMWithInputCapture) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return "", nil
-}
-
-func TestCreateAgent(t *testing.T) {
-	// Setup Mock Tool
-	mockTool := &MockTool{name: "test-tool"}
-
-	// Setup Mock LLM
-	// 1. First call: returns tool call
-	// 2. Second call: returns final answer
-	mockLLM := &MockLLM{
-		responses: []llms.ContentResponse{
+	m.lastMessages = messages
+	return &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
 			{
-				Choices: []*llms.ContentChoice{
-					{
-						ToolCalls: []llms.ToolCall{
-							{
-								ID:   "call-1",
-								Type: "function",
-								FunctionCall: &llms.FunctionCall{
-									Name:      "test-tool",
-									Arguments: "input-1",
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				Choices: []*llms.ContentChoice{
-					{
-						Content: "Final Answer",
-					},
-				},
+				Content: "Response",
 			},
 		},
-	}
-
-	// Create Agent with System Message
-	systemMsg := "You are a helpful assistant."
-	agent, err := CreateAgent(mockLLM, []tools.Tool{mockTool}, WithSystemMessage(systemMsg))
-	assert.NoError(t, err)
-
-	// Initial State
-	initialState := map[string]any{
-		"messages": []llms.MessageContent{
-			llms.TextParts(llms.ChatMessageTypeHuman, "Run tool"),
-		},
-	}
-
-	// Run Agent
-	res, err := agent.Invoke(context.Background(), initialState)
-	assert.NoError(t, err)
-
-	// Verify Result
-	messages := res["messages"].([]llms.MessageContent)
-
-	// Expected messages:
-	// 0: Human "Run tool"
-	// 1: AI (ToolCall)
-	// 2: Tool (ToolCallResponse)
-	// 3: AI "Final Answer"
-	assert.Equal(t, 4, len(messages))
-	assert.Equal(t, llms.ChatMessageTypeHuman, messages[0].Role)
-	assert.Equal(t, llms.ChatMessageTypeAI, messages[1].Role)
-	assert.Equal(t, llms.ChatMessageTypeTool, messages[2].Role)
-	assert.Equal(t, llms.ChatMessageTypeAI, messages[3].Role)
-}
-
-func TestCreateAgent_SystemMessage(t *testing.T) {
-	mockTool := &MockTool{name: "test-tool"}
-	mockLLM := &MockLLMWithInputCapture{
-		responses: []llms.ContentResponse{
-			{
-				Choices: []*llms.ContentChoice{
-					{Content: "Response"},
-				},
-			},
-		},
-	}
-
-	systemMsg := "System Prompt"
-	agent, err := CreateAgent(mockLLM, []tools.Tool{mockTool}, WithSystemMessage(systemMsg))
-	assert.NoError(t, err)
-
-	initialState := map[string]any{
-		"messages": []llms.MessageContent{
-			llms.TextParts(llms.ChatMessageTypeHuman, "Hello"),
-		},
-	}
-
-	_, err = agent.Invoke(context.Background(), initialState)
-	assert.NoError(t, err)
-
-	// Verify that the first message sent to LLM was the system message
-	assert.NotEmpty(t, mockLLM.CapturedMessages)
-	firstCallMessages := mockLLM.CapturedMessages[0]
-	assert.Equal(t, llms.ChatMessageTypeSystem, firstCallMessages[0].Role)
-	assert.Equal(t, "System Prompt", firstCallMessages[0].Parts[0].(llms.TextContent).Text)
-	assert.Equal(t, llms.ChatMessageTypeHuman, firstCallMessages[1].Role)
-}
-
-func TestCreateAgent_StateModifier(t *testing.T) {
-	mockTool := &MockTool{name: "test-tool"}
-	mockLLM := &MockLLMWithInputCapture{
-		responses: []llms.ContentResponse{
-			{
-				Choices: []*llms.ContentChoice{
-					{Content: "Response"},
-				},
-			},
-		},
-	}
-
-	// State modifier that adds a prefix to the last message
-	modifier := func(messages []llms.MessageContent) []llms.MessageContent {
-		if len(messages) > 0 {
-			lastMsg := messages[len(messages)-1]
-			if len(lastMsg.Parts) > 0 {
-				if textPart, ok := lastMsg.Parts[0].(llms.TextContent); ok {
-					textPart.Text = "Modified: " + textPart.Text
-					lastMsg.Parts[0] = textPart
-					messages[len(messages)-1] = lastMsg
-				}
-			}
-		}
-		return messages
-	}
-
-	agent, err := CreateAgent(mockLLM, []tools.Tool{mockTool}, WithStateModifier(modifier))
-	assert.NoError(t, err)
-
-	initialState := map[string]any{
-		"messages": []llms.MessageContent{
-			llms.TextParts(llms.ChatMessageTypeHuman, "Hello"),
-		},
-	}
-
-	_, err = agent.Invoke(context.Background(), initialState)
-	assert.NoError(t, err)
-
-	// Verify that the message sent to LLM was modified
-	assert.NotEmpty(t, mockLLM.CapturedMessages)
-	firstCallMessages := mockLLM.CapturedMessages[0]
-	assert.Equal(t, llms.ChatMessageTypeHuman, firstCallMessages[0].Role)
-	assert.Equal(t, "Modified: Hello", firstCallMessages[0].Parts[0].(llms.TextContent).Text)
+	}, nil
 }

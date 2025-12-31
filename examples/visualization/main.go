@@ -8,89 +8,61 @@ import (
 )
 
 func main() {
-	// Create a graph representing a data processing pipeline
-	g := graph.NewStateGraph()
+	// Create a graph
+	g := graph.NewStateGraph[map[string]any]()
 
-	// Add nodes representing different processing stages
-	g.AddNode("validate_input", "validate_input", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → validated", state), nil
+	// 1. Define nodes
+	g.AddNode("validate_input", "validate_input", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"valid": true}, nil
 	})
 
-	g.AddNode("fetch_data", "fetch_data", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → fetched", state), nil
+	g.AddNode("fetch_data", "fetch_data", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"data": "raw"}, nil
 	})
 
-	g.AddNode("transform", "transform", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → transformed", state), nil
+	g.AddNode("transform", "transform", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"data": "transformed"}, nil
 	})
 
-	g.AddNode("enrich", "enrich", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → enriched", state), nil
+	g.AddNode("enrich", "enrich", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"data": "enriched"}, nil
 	})
 
-	g.AddNode("validate_output", "validate_output", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → output_validated", state), nil
+	g.AddNode("validate_output", "validate_output", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"output_valid": true}, nil
 	})
 
-	g.AddNode("save", "save", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → saved", state), nil
+	g.AddNode("save", "save", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"saved": true}, nil
 	})
 
-	g.AddNode("notify", "notify", func(ctx context.Context, state any) (any, error) {
-		return fmt.Sprintf("%v → notified", state), nil
+	g.AddNode("notify", "notify", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"notified": true}, nil
 	})
 
-	// Build the pipeline flow
+	// 2. Define edges (complex structure)
 	g.SetEntryPoint("validate_input")
 	g.AddEdge("validate_input", "fetch_data")
 	g.AddEdge("fetch_data", "transform")
-
-	// Add conditional edge for data quality check
-	g.AddConditionalEdge("transform", func(ctx context.Context, state any) string {
-		// In a real scenario, this would check data quality
-		return "enrich" // Always enrich for this example
-	})
-
+	g.AddEdge("transform", "enrich")
 	g.AddEdge("enrich", "validate_output")
 	g.AddEdge("validate_output", "save")
 	g.AddEdge("save", "notify")
 	g.AddEdge("notify", graph.END)
 
-	// Compile the graph
+	// 3. Compile
 	runnable, err := g.Compile()
 	if err != nil {
 		panic(err)
 	}
 
-	// Create graph exporter for visualization
-	exporter := runnable.GetGraph()
+	// 4. Visualize
+	// Get the graph exporter
+	exporter := graph.GetGraphForRunnable(runnable)
 
-	fmt.Println("=== MERMAID DIAGRAM ===")
-	fmt.Println("Copy this to view in Mermaid Live Editor (https://mermaid.live/)")
-	fmt.Println()
-	mermaid := exporter.DrawMermaid()
-	fmt.Println(mermaid)
-	fmt.Println()
+	fmt.Println("=== Mermaid Diagram ===")
+	fmt.Println(exporter.DrawMermaid())
 
-	fmt.Println("=== DOT FORMAT (Graphviz) ===")
-	fmt.Println("Save this as .dot file and use 'dot -Tpng file.dot -o graph.png' to generate image")
-	fmt.Println()
-	dot := exporter.DrawDOT()
-	fmt.Println(dot)
-	fmt.Println()
-
-	fmt.Println("=== ASCII VISUALIZATION ===")
-	ascii := exporter.DrawASCII()
-	fmt.Println(ascii)
-	fmt.Println()
-
-	// Execute the graph to show it works
-	fmt.Println("=== EXECUTING GRAPH ===")
-	ctx := context.Background()
-	result, err := runnable.Invoke(ctx, "input_data")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Final result: %v\n", result)
+	fmt.Println("\n=== ASCII Diagram ===")
+	fmt.Println(exporter.DrawASCII())
 }

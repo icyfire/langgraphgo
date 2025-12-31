@@ -8,7 +8,7 @@ import (
 )
 
 func TestUpdateState(t *testing.T) {
-	g := NewCheckpointableStateGraph()
+	g := NewCheckpointableStateGraph[map[string]any]()
 
 	// Setup schema with reducer
 	schema := NewMapSchema()
@@ -18,9 +18,9 @@ func TestUpdateState(t *testing.T) {
 		}
 		return curr.(int) + new.(int), nil
 	})
-	g.SetSchema(&MapSchemaAdapter{Schema: schema})
+	g.SetSchema(schema)
 
-	g.AddNodeUntyped("A", "A", func(ctx context.Context, state any) (any, error) {
+	g.AddNode("A", "A", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		return map[string]any{"count": 1}, nil
 	})
 	g.SetEntryPoint("A")
@@ -34,18 +34,18 @@ func TestUpdateState(t *testing.T) {
 	res, err := runnable.Invoke(ctx, map[string]any{"count": 10})
 	assert.NoError(t, err)
 
-	mRes := res.(map[string]any)
+	mRes := res
 	assert.Equal(t, 11, mRes["count"]) // 10 + 1 = 11
 
 	// 2. Update state manually (Human-in-the-loop)
 	// We want to add 5 to the count
 	config := &Config{
 		Configurable: map[string]any{
-			"thread_id": runnable.executionID,
+			"thread_id": runnable.GetExecutionID(),
 		},
 	}
 
-	newConfig, err := runnable.UpdateState(ctx, config, map[string]any{"count": 5}, "human")
+	newConfig, err := runnable.UpdateState(ctx, config, "human", map[string]any{"count": 5})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, newConfig.Configurable["checkpoint_id"])
 

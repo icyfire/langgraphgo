@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
-	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
@@ -18,7 +16,7 @@ type GPTResearcher struct {
 	ExecutionAgent *ExecutionAgent
 	PublisherAgent *PublisherAgent
 	Tools          *ToolRegistry
-	Graph          *graph.StateRunnable[map[string]any]
+	Graph          *graph.StateRunnable[*ResearchState]
 }
 
 // NewGPTResearcher creates a new GPT Researcher instance
@@ -57,11 +55,13 @@ func NewGPTResearcher(config *Config) (*GPTResearcher, error) {
 	}
 
 	// Create tools
+
 	tools := NewToolRegistry(config, summaryModel)
 
 	// Create agents
 	plannerAgent := NewPlannerAgent(plannerModel, config)
 	executionAgent := NewExecutionAgent(executionModel, config, tools)
+
 	publisherAgent := NewPublisherAgent(publisherModel, config)
 
 	researcher := &GPTResearcher{
@@ -82,55 +82,28 @@ func NewGPTResearcher(config *Config) (*GPTResearcher, error) {
 
 // buildGraph constructs the research workflow using langgraphgo
 func (r *GPTResearcher) buildGraph() error {
-	// Create workflow
-	workflow := graph.NewStateGraph[map[string]any]()
+	// Create workflow with typed state
+	workflow := graph.NewStateGraph[*ResearchState]()
 
-	// Define schema
-	schema := graph.NewMapSchema()
-	schema.RegisterReducer("questions", graph.AppendReducer)
-	schema.RegisterReducer("search_results", graph.AppendReducer)
-	schema.RegisterReducer("summaries", graph.AppendReducer)
-	schema.RegisterReducer("sources", graph.AppendReducer)
-	// Wrap in adapter
-	schemaAdapter := &graph.MapSchemaAdapter{Schema: schema}
-	workflow.SetSchema(schemaAdapter)
-
-	// Wrap node functions to match typed signature
-	plannerFn := func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		result, err := r.plannerNode(ctx, state)
-		if err != nil {
+	// Define nodes
+	workflow.AddNode("planner", "Generate research questions", func(ctx context.Context, state *ResearchState) (*ResearchState, error) {
+		if err := r.PlannerAgent.GenerateQuestions(ctx, state); err != nil {
 			return nil, err
 		}
-		if resultMap, ok := result.(map[string]any); ok {
-			return resultMap, nil
-		}
 		return state, nil
-	}
-	executorFn := func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		result, err := r.executorNode(ctx, state)
-		if err != nil {
+	})
+	workflow.AddNode("executor", "Execute research and gather information", func(ctx context.Context, state *ResearchState) (*ResearchState, error) {
+		if err := r.ExecutionAgent.ExecuteAll(ctx, state); err != nil {
 			return nil, err
 		}
-		if resultMap, ok := result.(map[string]any); ok {
-			return resultMap, nil
-		}
 		return state, nil
-	}
-	publisherFn := func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		result, err := r.publisherNode(ctx, state)
-		if err != nil {
+	})
+	workflow.AddNode("publisher", "Generate final research report", func(ctx context.Context, state *ResearchState) (*ResearchState, error) {
+		if err := r.PublisherAgent.GenerateReport(ctx, state); err != nil {
 			return nil, err
 		}
-		if resultMap, ok := result.(map[string]any); ok {
-			return resultMap, nil
-		}
 		return state, nil
-	}
-
-	// Add nodes
-	workflow.AddNode("planner", "Generate research questions", plannerFn)
-	workflow.AddNode("executor", "Execute research and gather information", executorFn)
-	workflow.AddNode("publisher", "Generate final research report", publisherFn)
+	})
 
 	// Add edges
 	workflow.SetEntryPoint("planner")
@@ -148,39 +121,6 @@ func (r *GPTResearcher) buildGraph() error {
 	return nil
 }
 
-// plannerNode is the graph node for the planner agent
-func (r *GPTResearcher) plannerNode(ctx context.Context, stateInterface any) (any, error) {
-	state := r.interfaceToState(stateInterface)
-
-	if err := r.PlannerAgent.GenerateQuestions(ctx, state); err != nil {
-		return nil, err
-	}
-
-	return r.stateToInterface(state), nil
-}
-
-// executorNode is the graph node for the execution agent
-func (r *GPTResearcher) executorNode(ctx context.Context, stateInterface any) (any, error) {
-	state := r.interfaceToState(stateInterface)
-
-	if err := r.ExecutionAgent.ExecuteAll(ctx, state); err != nil {
-		return nil, err
-	}
-
-	return r.stateToInterface(state), nil
-}
-
-// publisherNode is the graph node for the publisher agent
-func (r *GPTResearcher) publisherNode(ctx context.Context, stateInterface any) (any, error) {
-	state := r.interfaceToState(stateInterface)
-
-	if err := r.PublisherAgent.GenerateReport(ctx, state); err != nil {
-		return nil, err
-	}
-
-	return r.stateToInterface(state), nil
-}
-
 // ConductResearch executes the full research workflow
 func (r *GPTResearcher) ConductResearch(ctx context.Context, query string) (*ResearchState, error) {
 	if r.Config.Verbose {
@@ -194,31 +134,25 @@ func (r *GPTResearcher) ConductResearch(ctx context.Context, query string) (*Res
 	// Create initial state
 	initialState := NewResearchState(query)
 
-	// Convert to map for graph execution
-	stateMap := r.stateToInterface(initialState)
-
 	// Execute graph
-	result, err := r.Graph.Invoke(ctx, stateMap)
+	result, err := r.Graph.Invoke(ctx, initialState)
 	if err != nil {
 		return nil, fmt.Errorf("research workflow failed: %w", err)
 	}
-
-	// Convert back to ResearchState
-	finalState := r.interfaceToState(result)
 
 	if r.Config.Verbose {
 		fmt.Println("\n" + strings.Repeat("=", 80))
 		fmt.Println("RESEARCH COMPLETE")
 		fmt.Println(strings.Repeat("=", 80))
 		fmt.Printf("\nStatistics:\n")
-		fmt.Printf("- Research Questions: %d\n", len(finalState.Questions))
-		fmt.Printf("- Sources Consulted: %d\n", len(finalState.Sources))
-		fmt.Printf("- Summaries Generated: %d\n", len(finalState.Summaries))
-		fmt.Printf("- Report Length: %d characters\n", len(finalState.FinalReport))
-		fmt.Printf("- Duration: %.1f minutes\n\n", finalState.EndTime.Sub(finalState.StartTime).Minutes())
+		fmt.Printf("- Research Questions: %d\n", len(result.Questions))
+		fmt.Printf("- Sources Consulted: %d\n", len(result.Sources))
+		fmt.Printf("- Summaries Generated: %d\n", len(result.Summaries))
+		fmt.Printf("- Report Length: %d characters\n", len(result.FinalReport))
+		fmt.Printf("- Duration: %.1f minutes\n\n", result.EndTime.Sub(result.StartTime).Minutes())
 	}
 
-	return finalState, nil
+	return result, nil
 }
 
 // WriteReport generates and returns the final report
@@ -233,91 +167,4 @@ func (r *GPTResearcher) WriteReport(ctx context.Context, state *ResearchState) (
 	}
 
 	return state.FinalReport, nil
-}
-
-// stateToInterface converts ResearchState to map[string]any for graph
-func (r *GPTResearcher) stateToInterface(state *ResearchState) map[string]any {
-	return map[string]any{
-		"query":              state.Query,
-		"research_goal":      state.ResearchGoal,
-		"questions":          state.Questions,
-		"planning_complete":  state.PlanningComplete,
-		"search_results":     state.SearchResults,
-		"summaries":          state.Summaries,
-		"execution_complete": state.ExecutionComplete,
-		"final_report":       state.FinalReport,
-		"report_complete":    state.ReportComplete,
-		"sources":            state.Sources,
-		"total_sources":      state.TotalSources,
-		"iteration":          state.Iteration,
-		"start_time":         state.StartTime,
-		"end_time":           state.EndTime,
-		"messages":           state.Messages,
-	}
-}
-
-// interfaceToState converts map[string]any back to ResearchState
-func (r *GPTResearcher) interfaceToState(stateInterface any) *ResearchState {
-	stateMap, ok := stateInterface.(map[string]any)
-	if !ok {
-		return NewResearchState("")
-	}
-
-	state := &ResearchState{}
-
-	if v, ok := stateMap["query"].(string); ok {
-		state.Query = v
-	}
-	if v, ok := stateMap["research_goal"].(string); ok {
-		state.ResearchGoal = v
-	}
-	if v, ok := stateMap["questions"].([]string); ok {
-		state.Questions = v
-	} else if v, ok := stateMap["questions"].([]any); ok {
-		for _, q := range v {
-			if str, ok := q.(string); ok {
-				state.Questions = append(state.Questions, str)
-			}
-		}
-	}
-	if v, ok := stateMap["planning_complete"].(bool); ok {
-		state.PlanningComplete = v
-	}
-	if v, ok := stateMap["execution_complete"].(bool); ok {
-		state.ExecutionComplete = v
-	}
-	if v, ok := stateMap["report_complete"].(bool); ok {
-		state.ReportComplete = v
-	}
-	if v, ok := stateMap["final_report"].(string); ok {
-		state.FinalReport = v
-	}
-	if v, ok := stateMap["total_sources"].(int); ok {
-		state.TotalSources = v
-	}
-	if v, ok := stateMap["iteration"].(int); ok {
-		state.Iteration = v
-	}
-
-	// Handle complex types
-	if v, ok := stateMap["search_results"].([]SearchResult); ok {
-		state.SearchResults = v
-	}
-	if v, ok := stateMap["summaries"].([]SourceSummary); ok {
-		state.Summaries = v
-	}
-	if v, ok := stateMap["sources"].([]Source); ok {
-		state.Sources = v
-	}
-	if v, ok := stateMap["messages"].([]llms.MessageContent); ok {
-		state.Messages = v
-	}
-	if v, ok := stateMap["start_time"].(time.Time); ok {
-		state.StartTime = v
-	}
-	if v, ok := stateMap["end_time"].(time.Time); ok {
-		state.EndTime = v
-	}
-
-	return state
 }

@@ -69,7 +69,12 @@ func CreatePTCAgent(config PTCAgentConfig) (*graph.Runnable, error) {
 	systemPrompt := BuildSystemPrompt(config.SystemPrompt, config.Language, ptcNode.Executor)
 
 	// Create the graph
-	workflow := graph.NewMessageGraph()
+	workflow := graph.NewStateGraph[map[string]any]()
+
+	// Define the state schema
+	schema := graph.NewMapSchema()
+	schema.RegisterReducer("messages", graph.AddMessages)
+	workflow.SetSchema(schema)
 
 	// Add agent node
 	workflow.AddNode("agent", "LLM agent that generates code for tool calling", func(ctx context.Context, state map[string]any) (map[string]any, error) {

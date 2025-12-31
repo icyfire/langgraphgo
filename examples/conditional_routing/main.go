@@ -3,58 +3,44 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/smallnest/langgraphgo/graph"
 )
 
 type Task struct {
+	ID       string
 	Priority string
 	Content  string
-	Result   string
 }
 
 func main() {
-	g := graph.NewStateGraph()
+	// Create graph
+	g := graph.NewStateGraph[map[string]any]()
 
-	// Router node - analyzes the task
-	g.AddNode("router", "router", func(ctx context.Context, state any) (any, error) {
-		task := state.(Task)
-		fmt.Printf("Routing task with priority: %s\n", task.Priority)
-		return task, nil
+	g.AddNode("router", "router", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return state, nil
 	})
 
-	// High priority handler
-	g.AddNode("urgent_handler", "urgent_handler", func(ctx context.Context, state any) (any, error) {
-		task := state.(Task)
-		task.Result = fmt.Sprintf("URGENT: Handled %s immediately", task.Content)
-		fmt.Println("→ Handled by urgent handler")
-		return task, nil
+	g.AddNode("urgent_handler", "urgent_handler", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"status": "handled_urgent"}, nil
 	})
 
-	// Normal priority handler
-	g.AddNode("normal_handler", "normal_handler", func(ctx context.Context, state any) (any, error) {
-		task := state.(Task)
-		task.Result = fmt.Sprintf("Normal: Processed %s in queue", task.Content)
-		fmt.Println("→ Handled by normal handler")
-		return task, nil
+	g.AddNode("normal_handler", "normal_handler", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"status": "handled_normal"}, nil
 	})
 
-	// Low priority handler
-	g.AddNode("batch_handler", "batch_handler", func(ctx context.Context, state any) (any, error) {
-		task := state.(Task)
-		task.Result = fmt.Sprintf("Batch: Queued %s for later", task.Content)
-		fmt.Println("→ Handled by batch handler")
-		return task, nil
+	g.AddNode("batch_handler", "batch_handler", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		return map[string]any{"status": "handled_batch"}, nil
 	})
 
-	// Set up the flow
 	g.SetEntryPoint("router")
 
-	// Add conditional routing based on priority
-	g.AddConditionalEdge("router", func(ctx context.Context, state any) string {
-		task := state.(Task)
-		switch task.Priority {
-		case "high", "urgent":
+	// Add conditional edge based on "priority"
+	g.AddConditionalEdge("router", func(ctx context.Context, state map[string]any) string {
+		priority, _ := state["priority"].(string)
+		switch priority {
+		case "high":
 			return "urgent_handler"
 		case "low":
 			return "batch_handler"
@@ -63,34 +49,40 @@ func main() {
 		}
 	})
 
-	// All handlers lead to END
 	g.AddEdge("urgent_handler", graph.END)
 	g.AddEdge("normal_handler", graph.END)
 	g.AddEdge("batch_handler", graph.END)
 
-	// Compile the graph
+	// Compile
 	runnable, err := g.Compile()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	// Test with different priorities
-	testCases := []Task{
-		{Priority: "high", Content: "Fix production bug"},
-		{Priority: "normal", Content: "Update documentation"},
-		{Priority: "low", Content: "Refactor old code"},
-		{Priority: "urgent", Content: "Security patch"},
+	// 1. High priority task
+	fmt.Println("--- High Priority Task ---")
+	task1 := map[string]any{"id": "1", "priority": "high", "content": "System down"}
+	result, err := runnable.Invoke(context.Background(), task1)
+	if err != nil {
+		log.Fatal(err)
 	}
+	fmt.Printf("Result: %s\n", result["status"])
 
-	ctx := context.Background()
-	for _, task := range testCases {
-		fmt.Printf("\n--- Processing: %s ---\n", task.Content)
-		result, err := runnable.Invoke(ctx, task)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-		finalTask := result.(Task)
-		fmt.Printf("Result: %s\n", finalTask.Result)
+	// 2. Low priority task
+	fmt.Println("\n--- Low Priority Task ---")
+	task2 := map[string]any{"id": "2", "priority": "low", "content": "Update docs"}
+	result, err = runnable.Invoke(context.Background(), task2)
+	if err != nil {
+		log.Fatal(err)
 	}
+	fmt.Printf("Result: %s\n", result["status"])
+
+	// 3. Normal priority task
+	fmt.Println("\n--- Normal Priority Task ---")
+	task3 := map[string]any{"id": "3", "priority": "medium", "content": "Bug fix"}
+	result, err = runnable.Invoke(context.Background(), task3)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Result: %s\n", result["status"])
 }

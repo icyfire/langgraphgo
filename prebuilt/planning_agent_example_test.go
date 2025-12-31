@@ -8,17 +8,16 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
-// Example demonstrates how to use CreatePlanningAgent to build
+// Example demonstrates how to use CreatePlanningAgentMap to build
 // a dynamic workflow based on user requests
 func Example_planningAgent() {
 	// Step 1: Define your custom nodes that can be used in workflows
-	nodes := []*graph.Node{
+	nodes := []graph.TypedNode[map[string]any]{
 		{
 			Name:        "fetch_data",
 			Description: "Fetch data from external API or database",
-			Function: func(ctx context.Context, state any) (any, error) {
-				mState := state.(map[string]any)
-				messages := mState["messages"].([]llms.MessageContent)
+			Function: func(ctx context.Context, state map[string]any) (map[string]any, error) {
+				messages := state["messages"].([]llms.MessageContent)
 
 				// Simulate fetching data
 				fmt.Println("Fetching data from API...")
@@ -36,9 +35,8 @@ func Example_planningAgent() {
 		{
 			Name:        "validate_data",
 			Description: "Validate the integrity and format of data",
-			Function: func(ctx context.Context, state any) (any, error) {
-				mState := state.(map[string]any)
-				messages := mState["messages"].([]llms.MessageContent)
+			Function: func(ctx context.Context, state map[string]any) (map[string]any, error) {
+				messages := state["messages"].([]llms.MessageContent)
 
 				// Simulate validation
 				fmt.Println("Validating data...")
@@ -56,9 +54,8 @@ func Example_planningAgent() {
 		{
 			Name:        "transform_data",
 			Description: "Transform and normalize data into required format",
-			Function: func(ctx context.Context, state any) (any, error) {
-				mState := state.(map[string]any)
-				messages := mState["messages"].([]llms.MessageContent)
+			Function: func(ctx context.Context, state map[string]any) (map[string]any, error) {
+				messages := state["messages"].([]llms.MessageContent)
 
 				// Simulate transformation
 				fmt.Println("Transforming data...")
@@ -76,9 +73,8 @@ func Example_planningAgent() {
 		{
 			Name:        "analyze_data",
 			Description: "Perform statistical analysis on the data",
-			Function: func(ctx context.Context, state any) (any, error) {
-				mState := state.(map[string]any)
-				messages := mState["messages"].([]llms.MessageContent)
+			Function: func(ctx context.Context, state map[string]any) (map[string]any, error) {
+				messages := state["messages"].([]llms.MessageContent)
 
 				// Simulate analysis
 				fmt.Println("Analyzing data...")
@@ -96,9 +92,8 @@ func Example_planningAgent() {
 		{
 			Name:        "save_results",
 			Description: "Save processed results to storage",
-			Function: func(ctx context.Context, state any) (any, error) {
-				mState := state.(map[string]any)
-				messages := mState["messages"].([]llms.MessageContent)
+			Function: func(ctx context.Context, state map[string]any) (map[string]any, error) {
+				messages := state["messages"].([]llms.MessageContent)
 
 				// Simulate saving
 				fmt.Println("Saving results...")
@@ -183,8 +178,8 @@ func Example_planningAgent() {
 // Example showing how to use the planning agent with verbose mode
 func Example_planningAgentWithVerbose() {
 	// In a real application, you would define nodes and create the agent
-	// nodes := []*graph.Node{...}
-	// agent, err := prebuilt.CreatePlanningAgent(model, nodes, []tools.Tool{}, prebuilt.WithVerbose(true))
+	// nodes := []graph.TypedNode[map[string]any]{...}
+	// agent, err := prebuilt.CreatePlanningAgentMap(model, nodes, []tools.Tool{}, prebuilt.WithVerbose(true))
 
 	fmt.Println("With verbose mode enabled, you will see:")
 	fmt.Println("🤔 Planning workflow...")
@@ -213,13 +208,13 @@ func Example_planningAgentRealUsage() {
 	fmt.Println("Real usage pattern:")
 	fmt.Println()
 	fmt.Println("// 1. Define your nodes")
-	fmt.Println("nodes := []*graph.Node{...}")
+	fmt.Println("nodes := []graph.TypedNode[map[string]any]{...}")
 	fmt.Println()
 	fmt.Println("// 2. Initialize your LLM model")
 	fmt.Println("model := openai.New()")
 	fmt.Println()
 	fmt.Println("// 3. Create the planning agent")
-	fmt.Println("agent, err := prebuilt.CreatePlanningAgent(")
+	fmt.Println("agent, err := prebuilt.CreatePlanningAgentMap(")
 	fmt.Println("    model,")
 	fmt.Println("    nodes,")
 	fmt.Println("    []tools.Tool{},")
@@ -238,20 +233,20 @@ func Example_planningAgentRealUsage() {
 	fmt.Println("result, err := agent.Invoke(context.Background(), initialState)")
 	fmt.Println()
 	fmt.Println("// 6. Access results")
-	fmt.Println("mState := result.(map[string]any)")
+	fmt.Println("mState := result")
 	fmt.Println("messages := mState[\"messages\"].([]llms.MessageContent)")
 
 	// Output:
 	// Real usage pattern:
 	//
 	// // 1. Define your nodes
-	// nodes := []*graph.Node{...}
+	// nodes := []graph.TypedNode[map[string]any]{...}
 	//
 	// // 2. Initialize your LLM model
 	// model := openai.New()
 	//
 	// // 3. Create the planning agent
-	// agent, err := prebuilt.CreatePlanningAgent(
+	// agent, err := prebuilt.CreatePlanningAgentMap(
 	//     model,
 	//     nodes,
 	//     []tools.Tool{},
@@ -270,7 +265,7 @@ func Example_planningAgentRealUsage() {
 	// result, err := agent.Invoke(context.Background(), initialState)
 	//
 	// // 6. Access results
-	// mState := result.(map[string]any)
+	// mState := result
 	// messages := mState["messages"].([]llms.MessageContent)
 }
 

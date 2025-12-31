@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	testState   = "test_state"
 	step2Result = "step2_result"
 )
 
@@ -348,14 +347,14 @@ func TestBuiltinListeners_Integration(t *testing.T) {
 	t.Parallel()
 
 	// Create graph
-	g := graph.NewListenableStateGraphUntyped()
+	g := graph.NewListenableStateGraph[map[string]any]()
 
-	node1 := g.AddNodeUntyped("step1", "step1", func(_ context.Context, state any) (any, error) {
+	node1 := g.AddNode("step1", "step1", func(_ context.Context, state map[string]any) (map[string]any, error) {
 		// Return updated state map
 		return map[string]any{"state": "step1_result"}, nil
 	})
 
-	node2 := g.AddNodeUntyped("step2", "step2", func(_ context.Context, state any) (any, error) {
+	node2 := g.AddNode("step2", "step2", func(_ context.Context, state map[string]any) (map[string]any, error) {
 		// Return updated state map
 		return map[string]any{"state": step2Result}, nil
 	})
@@ -372,15 +371,136 @@ func TestBuiltinListeners_Integration(t *testing.T) {
 	chatListener := graph.NewChatListenerWithWriter(&chatBuf).WithTime(false)
 	metricsListener := graph.NewMetricsListener()
 
-	node1.AddListener(progressListener)
-	node1.AddListener(logListener)
-	node1.AddListener(chatListener)
-	node1.AddListener(metricsListener)
+	// Builtin listeners might be implementing NodeListener[any] (untyped)?
+	// If Builtin listeners are not generic, we might need adapters.
+	// But let's check builtin_listeners.go.
+	// They implement NodeListener (which was untyped interface).
+	// Now NodeListener is NodeListener[S].
+	// If builtin listeners implement OnNodeEvent(..., state any, ...), they only satisfy NodeListener[any].
+	// But our graph is NodeListener[map[string]any].
+	// So we can't directly add them if they don't implement the generic interface with map[string]any.
+	// Unless I make builtin listeners generic or use an adapter.
+	//
+	// However, NodeListener[S] interface has OnNodeEvent(..., state S, ...).
+	// If builtin listener has OnNodeEvent(..., state any, ...), it DOES NOT match NodeListener[S] in Go because methods must match exactly.
+	//
+	// So I probably broke builtin listeners.
+	// I should check builtin_listeners.go.
+	// If they use `any`, they are compatible with `NodeListener[any]`.
+	// But I am using `ListenableStateGraph[map[string]any]`.
+	// Its `AddListener` expects `NodeListener[map[string]any]`.
+	//
+	// I need to genericize builtin listeners OR create an adapter.
+	// Given the scope, creating an adapter is easier.
+	// But "unify to generics" suggests making them generic.
+	//
+	// Let's assume for now I will fix builtin_listeners.go later or they are already fixed (I didn't touch them).
+	// I didn't touch `builtin_listeners.go`.
+	// So they are broken.
+	//
+	// I will update the test to assume I will fix them.
+	// OR I can use an adapter in the test.
+	//
+	// Actually, `NewProgressListenerWithWriter` returns `*ProgressListener`.
+	// `ProgressListener` has `OnNodeEvent(..., state any, ...)`.
+	// I need `OnNodeEvent(..., state map[string]any, ...)`.
+	//
+	// I will make `BuiltinListeners` generic-friendly by adding a method or type alias?
+	// Or just make them implement `OnNodeEvent` with `any`.
+	// But `ListenableNode[S]` calls `OnNodeEvent(..., state S, ...)`.
+	// If `S` is `map[string]any`, it passes a map.
+	// `ProgressListener` expects `any`.
+	// `map` satisfies `any`.
+	// But the INTERFACE `NodeListener[map[string]any]` requires method taking `map[string]any`.
+	// `ProgressListener` method takes `any`.
+	// Does `func(any)` satisfy `interface { func(map[string]any) }`? NO.
+	//
+	// So I MUST genericize builtin listeners or use adapters.
+	// `ProgressListener` should probably be `ProgressListener[S any]`.
+	//
+	// I will check `builtin_listeners.go` in next step.
+	// For now, I will comment out the listener addition in test or wrap them.
+	//
+	// Better: I will create a simple adapter in the test for now.
+	// type anyAdapter struct { L graph.NodeListener[any] }
+	// func (a anyAdapter) OnNodeEvent(..., state map[string]any, ...) { a.L.OnNodeEvent(..., state, ...) }
+	//
+	// Wait, `NodeListener` is generic now. `graph.NodeListener` refers to `graph.NodeListener[S]`.
+	// `builtin_listeners.go` defines `ProgressListener`. It implements `OnNodeEvent`.
+	// But `NodeListener` definition in `graph` package CHANGED.
+	// So `builtin_listeners.go` might fail to compile if it refers to `NodeListener`.
+	// `builtin_listeners.go` imports `graph`.
+	// It likely uses `NodeListener` interface?
+	//
+	// Let's check `builtin_listeners.go`.
+	// `type ProgressListener struct ...`
+	// `func (l *ProgressListener) OnNodeEvent(...)`
+	// It probably doesn't explicitly say "implements NodeListener".
+	// But to be used as one, it must satisfy the interface.
+	//
+	// I will verify this in next steps.
+	// For the test, I will update it to use the new graph API.
 
-	node2.AddListener(progressListener)
-	node2.AddListener(logListener)
-	node2.AddListener(chatListener)
-	node2.AddListener(metricsListener)
+	// Adapter for builtin listeners.
+	// Builtin listeners seems to have OnNodeEvent(..., map[string]any, ...).
+	mapAdapter := func(l interface {
+		OnNodeEvent(context.Context, graph.NodeEvent, string, map[string]any, error)
+	}) graph.NodeListener[map[string]any] {
+		return graph.NodeListenerFunc[map[string]any](func(ctx context.Context, e graph.NodeEvent, n string, s map[string]any, err error) {
+			l.OnNodeEvent(ctx, e, n, s, err)
+		})
+	}
+
+	// BUT, if ProgressListener takes map[string]any, it ALREADY implements NodeListener[map[string]any]!
+	// So I shouldn't need an adapter?
+	//
+	// Why did I think I needed an adapter?
+	// Because originally it was untyped (any).
+	// If it was untyped, it implemented NodeListener (untyped).
+	// Now NodeListener is generic.
+	// NodeListener[map[string]any] requires OnNodeEvent(..., map[string]any, ...).
+	//
+	// If ProgressListener has OnNodeEvent(..., any, ...), it does NOT implement NodeListener[map[string]any].
+	// The error message:
+	// cannot use progressListener ... as interface{... any ...} value in argument to adapter:
+	// *graph.ProgressListener does not implement interface{... any ...} (wrong type for method OnNodeEvent)
+	// have OnNodeEvent(..., map[string]any, ...)
+	// want OnNodeEvent(..., any, ...)
+	//
+	// This CONFIRMS ProgressListener has `map[string]any` in its signature.
+	// How? I must have changed builtin_listeners.go?
+	// Or maybe it was always map[string]any?
+	// If so, I can just use it directly!
+	//
+	// Let's try adding directly first. If that fails, I'll know why.
+	// But wait, if it has `map[string]any`, why did it work with `StateGraphUntyped` (which dealt with `any`)?
+	// `StateGraphUntyped` listeners took `any`.
+	// If ProgressListener took `map[string]any`, it wouldn't satisfy `NodeListener` (untyped).
+	//
+	// Unless... I updated `builtin_listeners.go` in a previous step without realizing?
+	// I don't recall editing it.
+	//
+	// Maybe `NodeEvent` definition change affected it? No.
+	//
+	// Maybe I should just check `builtin_listeners.go` content.
+	// But I am in the middle of `replace`.
+	//
+	// I will update the test to use an adapter that matches what the compiler says ProgressListener has.
+	// If compiler says it has `map[string]any`, then my adapter should accept `map[string]any`.
+	// And if it has `map[string]any`, it implements `NodeListener[map[string]any]`.
+	// So I can cast/use directly?
+	//
+	// Let's try using `mapAdapter` defined above.
+
+	node1.AddListener(mapAdapter(progressListener))
+	node1.AddListener(mapAdapter(logListener))
+	node1.AddListener(mapAdapter(chatListener))
+	node1.AddListener(mapAdapter(metricsListener))
+
+	node2.AddListener(mapAdapter(progressListener))
+	node2.AddListener(mapAdapter(logListener))
+	node2.AddListener(mapAdapter(chatListener))
+	node2.AddListener(mapAdapter(metricsListener))
 
 	// Execute graph - pass input as map to avoid wrapping
 	runnable, err := g.CompileListenable()

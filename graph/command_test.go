@@ -17,7 +17,12 @@ func (m *mapSchemaAdapterForAny) Init() any {
 }
 
 func (m *mapSchemaAdapterForAny) Update(current, new any) (any, error) {
-	return m.MapSchema.Update(current, new)
+	currentMap, ok1 := current.(map[string]any)
+	newMap, ok2 := new.(map[string]any)
+	if !ok1 || !ok2 {
+		return current, nil // Or error?
+	}
+	return m.MapSchema.Update(currentMap, newMap)
 }
 
 func TestCommandGoto(t *testing.T) {

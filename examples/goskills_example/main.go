@@ -77,8 +77,10 @@ func main() {
 		log.Fatal("No tools found from skills")
 	}
 
-	// 4. Create Agent
-	agent, err := prebuilt.CreateAgent(llm, allTools, prebuilt.WithSystemMessage(allSystemMessages.String()))
+	// 3. Create Agent with all skills
+	agent, err := prebuilt.CreateAgentMap(llm, allTools,
+		prebuilt.WithSystemMessage("You are a powerful AI assistant with many skills. Use them wisely."),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -7,42 +7,25 @@ import (
 )
 
 // ParallelNode represents a set of nodes that can execute in parallel
-type ParallelNode struct {
-	nodes []Node
+type ParallelNode[S any] struct {
+	nodes []TypedNode[S]
 	name  string
 }
 
 // NewParallelNode creates a new parallel node
-func NewParallelNode(name string, nodes ...Node) *ParallelNode {
-	return &ParallelNode{
+func NewParallelNode[S any](name string, nodes ...TypedNode[S]) *ParallelNode[S] {
+	return &ParallelNode[S]{
 		name:  name,
 		nodes: nodes,
 	}
 }
 
 // Execute runs all nodes in parallel and collects results
-func (pn *ParallelNode) Execute(ctx context.Context, state any) (any, error) {
-	// Extract actual state if it's wrapped in map[string]any
-	var actualState any
-	if stateMap, ok := state.(map[string]any); ok {
-		// Try to extract from common keys
-		if val, exists := stateMap["input"]; exists {
-			actualState = val
-		} else if val, exists := stateMap["state"]; exists {
-			actualState = val
-		} else if val, exists := stateMap["value"]; exists {
-			actualState = val
-		} else {
-			actualState = state
-		}
-	} else {
-		actualState = state
-	}
-
+func (pn *ParallelNode[S]) Execute(ctx context.Context, state S) ([]S, error) {
 	// Create channels for results and errors
 	type result struct {
 		index int
-		value any
+		value S
 		err   error
 	}
 
@@ -52,7 +35,7 @@ func (pn *ParallelNode) Execute(ctx context.Context, state any) (any, error) {
 	// Execute all nodes in parallel
 	for i, node := range pn.nodes {
 		wg.Add(1)
-		go func(idx int, n Node) {
+		go func(idx int, n TypedNode[S]) {
 			defer wg.Done()
 
 			// Execute with panic recovery
@@ -65,7 +48,7 @@ func (pn *ParallelNode) Execute(ctx context.Context, state any) (any, error) {
 				}
 			}()
 
-			value, err := n.Function(ctx, actualState)
+			value, err := n.Function(ctx, state)
 			results <- result{
 				index: idx,
 				value: value,
@@ -81,7 +64,7 @@ func (pn *ParallelNode) Execute(ctx context.Context, state any) (any, error) {
 	}()
 
 	// Collect results
-	outputs := make([]any, len(pn.nodes))
+	outputs := make([]S, len(pn.nodes))
 	var firstError error
 
 	for res := range results {
@@ -99,32 +82,46 @@ func (pn *ParallelNode) Execute(ctx context.Context, state any) (any, error) {
 	return outputs, nil
 }
 
-// AddParallelNodes adds a set of nodes that execute in parallel
-func (g *StateGraphUntyped) AddParallelNodes(groupName string, nodes map[string]func(context.Context, any) (any, error)) {
+// AddParallelNodes adds a set of nodes that execute in parallel.
+// merger is used to combine the results from parallel execution into a single state S.
+func (g *StateGraph[S]) AddParallelNodes(
+	groupName string,
+	nodes map[string]func(context.Context, S) (S, error),
+	merger func([]S) S,
+) {
 	// Create parallel node group
-	parallelNodes := make([]Node, 0, len(nodes))
+	parallelNodes := make([]TypedNode[S], 0, len(nodes))
 	for name, fn := range nodes {
-		parallelNodes = append(parallelNodes, Node{
+		parallelNodes = append(parallelNodes, TypedNode[S]{
 			Name:     name,
 			Function: fn,
 		})
 	}
 
-	// Add as a single parallel node using AddNodeUntyped for compatibility
+	// Add as a single parallel node
 	parallelNode := NewParallelNode(groupName, parallelNodes...)
-	g.AddNodeUntyped(groupName, "Parallel execution group: "+groupName, parallelNode.Execute)
+
+	// Wrap with merger
+	g.AddNode(groupName, "Parallel execution group: "+groupName, func(ctx context.Context, state S) (S, error) {
+		results, err := parallelNode.Execute(ctx, state)
+		if err != nil {
+			var zero S
+			return zero, err
+		}
+		return merger(results), nil
+	})
 }
 
 // MapReduceNode executes nodes in parallel and reduces results
-type MapReduceNode struct {
+type MapReduceNode[S any] struct {
 	name     string
-	mapNodes []Node
-	reducer  func([]any) (any, error)
+	mapNodes []TypedNode[S]
+	reducer  func([]S) (S, error)
 }
 
 // NewMapReduceNode creates a new map-reduce node
-func NewMapReduceNode(name string, reducer func([]any) (any, error), mapNodes ...Node) *MapReduceNode {
-	return &MapReduceNode{
+func NewMapReduceNode[S any](name string, reducer func([]S) (S, error), mapNodes ...TypedNode[S]) *MapReduceNode[S] {
+	return &MapReduceNode[S]{
 		name:     name,
 		mapNodes: mapNodes,
 		reducer:  reducer,
@@ -132,49 +129,39 @@ func NewMapReduceNode(name string, reducer func([]any) (any, error), mapNodes ..
 }
 
 // Execute runs map nodes in parallel and reduces results
-func (mr *MapReduceNode) Execute(ctx context.Context, state any) (any, error) {
-	// Extract actual state if it's wrapped in map[string]any
-	var actualState any
-	if stateMap, ok := state.(map[string]any); ok {
-		// Try to extract from common keys
-		if val, exists := stateMap["input"]; exists {
-			actualState = val
-		} else if val, exists := stateMap["state"]; exists {
-			actualState = val
-		} else if val, exists := stateMap["value"]; exists {
-			actualState = val
-		} else {
-			actualState = state
-		}
-	} else {
-		actualState = state
-	}
-
+func (mr *MapReduceNode[S]) Execute(ctx context.Context, state S) (S, error) {
 	// Execute map phase in parallel
 	pn := NewParallelNode(mr.name+"_map", mr.mapNodes...)
-	results, err := pn.Execute(ctx, actualState)
+	results, err := pn.Execute(ctx, state)
 	if err != nil {
-		return nil, fmt.Errorf("map phase failed: %w", err)
+		var zero S
+		return zero, fmt.Errorf("map phase failed: %w", err)
 	}
 
 	// Execute reduce phase
 	if mr.reducer != nil {
-		return mr.reducer(results.([]any))
+		return mr.reducer(results)
 	}
 
-	return results, nil
+	// If no reducer, return zero state (or we should enforce reducer?)
+	// In the generic version, we can't return []S as S unless S is []S.
+	// So we assume reducer is provided or S can hold the results.
+	// But without reducer, we don't know how to combine.
+	// For now, return zero if no reducer.
+	var zero S
+	return zero, nil
 }
 
 // AddMapReduceNode adds a map-reduce pattern node
-func (g *StateGraphUntyped) AddMapReduceNode(
+func (g *StateGraph[S]) AddMapReduceNode(
 	name string,
-	mapFunctions map[string]func(context.Context, any) (any, error),
-	reducer func([]any) (any, error),
+	mapFunctions map[string]func(context.Context, S) (S, error),
+	reducer func([]S) (S, error),
 ) {
 	// Create map nodes
-	mapNodes := make([]Node, 0, len(mapFunctions))
+	mapNodes := make([]TypedNode[S], 0, len(mapFunctions))
 	for nodeName, fn := range mapFunctions {
-		mapNodes = append(mapNodes, Node{
+		mapNodes = append(mapNodes, TypedNode[S]{
 			Name:     nodeName,
 			Function: fn,
 		})
@@ -182,44 +169,25 @@ func (g *StateGraphUntyped) AddMapReduceNode(
 
 	// Create and add map-reduce node
 	mrNode := NewMapReduceNode(name, reducer, mapNodes...)
-	g.AddNodeUntyped(name, "Map-reduce node: "+name, mrNode.Execute)
+	g.AddNode(name, "Map-reduce node: "+name, mrNode.Execute)
 }
 
-// FanOutFanIn creates a fan-out/fan-in pattern
-func (g *StateGraphUntyped) FanOutFanIn(
+// FanOutFanIn creates a fan-out/fan-in pattern.
+// aggregator merges worker results into a state S that is passed to the collector.
+func (g *StateGraph[S]) FanOutFanIn(
 	source string,
 	_ []string, // workers parameter kept for API compatibility
 	collector string,
-	workerFuncs map[string]func(context.Context, any) (any, error),
-	collectFunc func([]any) (any, error),
+	workerFuncs map[string]func(context.Context, S) (S, error),
+	aggregator func([]S) S,
+	collectFunc func(S) (S, error),
 ) {
 	// Add parallel worker nodes
-	g.AddParallelNodes(source+"_workers", workerFuncs)
+	g.AddParallelNodes(source+"_workers", workerFuncs, aggregator)
 
 	// Add collector node
-	g.AddNodeUntyped(collector, "Collector node: "+collector, func(_ context.Context, state any) (any, error) {
-		// State should be array of results from parallel workers
-		// AddNodeUntyped wraps input as map[string]any, so we need to extract the actual results
-		var results []any
-		if stateMap, ok := state.(map[string]any); ok {
-			// Try to get results from common keys
-			if val, exists := stateMap["value"]; exists {
-				if arr, ok := val.([]any); ok {
-					results = arr
-				}
-			} else if val, exists := stateMap["results"]; exists {
-				if arr, ok := val.([]any); ok {
-					results = arr
-				}
-			}
-		} else if arr, ok := state.([]any); ok {
-			results = arr
-		}
-
-		if results != nil {
-			return collectFunc(results)
-		}
-		return nil, fmt.Errorf("invalid state for collector: expected []any, got %T", state)
+	g.AddNode(collector, "Collector node: "+collector, func(ctx context.Context, state S) (S, error) {
+		return collectFunc(state)
 	})
 
 	// Connect source to workers and workers to collector

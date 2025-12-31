@@ -5,122 +5,96 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
+	"github.com/smallnest/langgraphgo/graph"
 	"github.com/smallnest/langgraphgo/rag"
-	"github.com/smallnest/langgraphgo/rag/loader"
 	"github.com/smallnest/langgraphgo/rag/retriever"
-	"github.com/smallnest/langgraphgo/rag/splitter"
 	"github.com/smallnest/langgraphgo/rag/store"
-	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 func main() {
+	// Check for OpenAI API key
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		fmt.Println("OPENAI_API_KEY not set. Skipping execution.")
+		return
+	}
+
 	ctx := context.Background()
 
-	// 1. Initialize LLM and Embedder
-	// Make sure OPENAI_API_KEY is set in your environment
+	// Initialize LLM
 	llm, err := openai.New()
 	if err != nil {
-		log.Fatalf("failed to create llm: %v", err)
+		log.Fatalf("Failed to create LLM: %v", err)
 	}
 
-	openaiEmbedder, err := embeddings.NewEmbedder(llm)
-	if err != nil {
-		log.Fatalf("failed to create embedder: %v", err)
+	// Create sample documents
+	documents := []rag.Document{
+		{
+			Content:  "LangGraph is a library for building stateful, multi-actor applications with LLMs.",
+			Metadata: map[string]any{"source": "docs"},
+		},
+		{
+			Content:  "RAG (Retrieval-Augmented Generation) combines retrieval with generation.",
+			Metadata: map[string]any{"source": "docs"},
+		},
 	}
-	// Wrap langchaingo embedder with our adapter
-	embedder := rag.NewLangChainEmbedder(openaiEmbedder)
 
-	// 2. Initialize Components
-	// In-memory vector store
+	// Create embedder and vector store
+	embedder := store.NewMockEmbedder(128)
 	vectorStore := store.NewInMemoryVectorStore(embedder)
 
-	// 3. Build Knowledge Base (Ingestion)
-	fmt.Println("=== Ingesting Documents ===")
-	dataDir := "./data"
-	err = filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && filepath.Ext(path) == ".txt" {
-			fmt.Printf("Processing %s...\n", path)
-
-			// Load
-			l := loader.NewTextLoader(path)
-			docs, err := l.Load(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Split
-			s := splitter.NewRecursiveCharacterTextSplitter(
-				splitter.WithChunkSize(500),
-				splitter.WithChunkOverlap(50),
-			)
-			chunks := s.SplitDocuments(docs)
-
-			// Store (Embeds automatically if vectorStore has embedder)
-			err = vectorStore.Add(ctx, chunks)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		log.Fatalf("failed to ingest documents: %v", err)
+	// Add documents
+	texts := make([]string, len(documents))
+	for i, doc := range documents {
+		texts[i] = doc.Content
 	}
-	fmt.Println("Ingestion complete.")
-	fmt.Println()
+	embeddings, _ := embedder.EmbedDocuments(ctx, texts)
+	vectorStore.AddBatch(ctx, documents, embeddings)
 
-	// 4. Set up Q&A Pipeline
 	// Create retriever
-	r := retriever.NewVectorRetriever(vectorStore, embedder, rag.RetrievalConfig{
-		K:              3,
-		ScoreThreshold: 0.5,
-	})
+	retriever := retriever.NewVectorStoreRetriever(vectorStore, embedder, 2)
 
-	// Configure pipeline
+	// Configure RAG pipeline
 	config := rag.DefaultPipelineConfig()
+	config.Retriever = retriever
 	config.LLM = llm
-	config.Retriever = r
-	config.IncludeCitations = true
+
+	// Build basic RAG pipeline
 
 	pipeline := rag.NewRAGPipeline(config)
 	err = pipeline.BuildBasicRAG()
 	if err != nil {
-		log.Fatalf("failed to build pipeline: %v", err)
+		log.Fatalf("Failed to build RAG pipeline: %v", err)
 	}
 
+	// Compile the pipeline
 	runnable, err := pipeline.Compile()
 	if err != nil {
-		log.Fatalf("failed to compile pipeline: %v", err)
+		log.Fatalf("Failed to compile pipeline: %v", err)
 	}
 
-	// 5. Intelligent Q&A
-	fmt.Println("=== Intelligent Q&A ===")
-	query := "What is LangGraphGo and what are its main features?"
-	fmt.Printf("Query: %s\n", query)
+	// Visualize
+	exporter := graph.GetGraphForRunnable(runnable)
+	fmt.Println("Pipeline Structure:")
+	fmt.Println(exporter.DrawASCII())
 
-	result, err := runnable.Invoke(ctx, rag.RAGState{
-		Query: query,
+	// Run query
+	query := "What is LangGraph?"
+	fmt.Printf("\nQuery: %s\n", query)
+
+	result, err := runnable.Invoke(ctx, map[string]any{
+		"query": query,
 	})
 	if err != nil {
-		log.Fatalf("failed to invoke pipeline: %v", err)
+		log.Fatalf("Failed to process query: %v", err)
 	}
 
-	finalState := result.(rag.RAGState)
-	fmt.Printf("\nAnswer:\n%s\n", finalState.Answer)
+	if answer, ok := result["answer"].(string); ok {
+		fmt.Printf("Answer: %s\n", answer)
+	}
 
-	if len(finalState.Citations) > 0 {
-		fmt.Println("\nCitations:")
-		for _, citation := range finalState.Citations {
-			fmt.Printf("- %s\n", citation)
-		}
+	if docs, ok := result["documents"].([]rag.RAGDocument); ok {
+		fmt.Printf("Retrieved %d documents\n", len(docs))
 	}
 }
-
-// Ensure rag.Embedder is satisfied by LangChainEmbedder
-var _ rag.Embedder = (*rag.LangChainEmbedder)(nil)
