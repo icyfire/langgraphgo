@@ -1,0 +1,3 @@
+[submodule "showcases"]
+	path = showcases
+	url = https://github.com/smallnest/langgraphgo-showcases
