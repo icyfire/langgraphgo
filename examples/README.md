@@ -24,6 +24,7 @@ This directory contains **70+ examples** demonstrating the features of LangGraph
 
 - **[Basic Example](basic_example/)** - Simple graph with hardcoded steps
 - **[Basic LLM](basic_llm/)** - Integration with LLMs
+- **[Arithmetic Example](arith_example/)** - Using LLM to calculate arithmetic expressions
 - **[LangChain Integration](langchain_example/)** - Using LangChain tools and models
 
 ## State Management

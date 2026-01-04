@@ -5,6 +5,7 @@
 ## 基本概念
 - **[基本示例 (Basic Example)](basic_example/README_CN.md)**: 带有硬编码步骤的简单图。
 - **[基本 LLM (Basic LLM)](basic_llm/README_CN.md)**: 与 LLM 的集成。
+- **[算术计算示例 (Arithmetic Example)](arith_example/README_CN.md)**: 使用 LLM 计算算术表达式。
 - **[条件路由 (Conditional Routing)](conditional_routing/README_CN.md)**: 基于状态的动态路由。
 - **[条件边 (Conditional Edges)](conditional_edges_example/README_CN.md)**: 使用条件边。
 
