@@ -44,17 +44,17 @@ type Relationship struct {
 
 // Community represents a community of entities in the knowledge graph
 type Community struct {
-	ID          string         `json:"id"`
-	Level       int            `json:"level"`
-	Title       string         `json:"title"`
-	Summary     string         `json:"summary"`
-	Entities    []string       `json:"entities"`
-	ParentID    string         `json:"parent_id,omitempty"`
-	Children    []string       `json:"children,omitempty"`
-	Properties  map[string]any `json:"properties,omitempty"`
-	Score       float64        `json:"score,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID         string         `json:"id"`
+	Level      int            `json:"level"`
+	Title      string         `json:"title"`
+	Summary    string         `json:"summary"`
+	Entities   []string       `json:"entities"`
+	ParentID   string         `json:"parent_id,omitempty"`
+	Children   []string       `json:"children,omitempty"`
+	Properties map[string]any `json:"properties,omitempty"`
+	Score      float64        `json:"score,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
 }
 
 // DocumentSearchResult represents a document search result with relevance score

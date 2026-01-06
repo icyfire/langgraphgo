@@ -40,10 +40,10 @@ func TestNewLightRAGEngine(t *testing.T) {
 	_ = context.Background()
 
 	config := rag.LightRAGConfig{
-		Mode:                 "hybrid",
-		ChunkSize:            512,
-		ChunkOverlap:         50,
-		MaxEntitiesPerChunk:  20,
+		Mode:                      "hybrid",
+		ChunkSize:                 512,
+		ChunkOverlap:              50,
+		MaxEntitiesPerChunk:       20,
 		EntityExtractionThreshold: 0.5,
 	}
 
@@ -152,8 +152,8 @@ func TestLightRAGEngine_LocalRetrieval(t *testing.T) {
 	config := rag.LightRAGConfig{
 		Mode: "local",
 		LocalConfig: rag.LocalRetrievalConfig{
-			TopK:               10,
-			MaxHops:            2,
+			TopK:                10,
+			MaxHops:             2,
 			IncludeDescriptions: true,
 		},
 		ChunkSize:    512,
@@ -213,13 +213,13 @@ func TestLightRAGEngine_GlobalRetrieval(t *testing.T) {
 	config := rag.LightRAGConfig{
 		Mode: "global",
 		GlobalConfig: rag.GlobalRetrievalConfig{
-			MaxCommunities:     5,
-			IncludeHierarchy:   false,
-			MaxHierarchyDepth:  3,
+			MaxCommunities:    5,
+			IncludeHierarchy:  false,
+			MaxHierarchyDepth: 3,
 		},
 		EnableCommunityDetection: true,
-		ChunkSize:               512,
-		ChunkOverlap:            50,
+		ChunkSize:                512,
+		ChunkOverlap:             50,
 	}
 
 	llm := &MockLLM{}
@@ -287,8 +287,8 @@ func TestLightRAGEngine_HybridRetrieval(t *testing.T) {
 		GlobalConfig: rag.GlobalRetrievalConfig{
 			MaxCommunities: 5,
 		},
-		ChunkSize:               512,
-		ChunkOverlap:            50,
+		ChunkSize:                512,
+		ChunkOverlap:             50,
 		EnableCommunityDetection: true,
 	}
 
@@ -489,10 +489,10 @@ func TestLightRAGEngine_GetConfig(t *testing.T) {
 	_ = context.Background()
 
 	config := rag.LightRAGConfig{
-		Mode:                 "hybrid",
-		ChunkSize:            1024,
-		ChunkOverlap:         100,
-		MaxEntitiesPerChunk:  30,
+		Mode:                      "hybrid",
+		ChunkSize:                 1024,
+		ChunkOverlap:              100,
+		MaxEntitiesPerChunk:       30,
 		EntityExtractionThreshold: 0.7,
 	}
 

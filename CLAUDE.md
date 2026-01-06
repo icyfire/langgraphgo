@@ -126,13 +126,30 @@ From `AGENTS.md`:
 - Table-driven tests with `t.Run()`, `t.Parallel()` where appropriate
 - Always check errors
 
+**Clean up generated artifacts**:
+- Delete temporary binary files after tasks complete
+- Use `go run` instead of `go build && ./binary` for one-off executions
+- If you must build binaries, clean them up: `rm -f ./binary_name` or `make clean`
+
+**Logging conventions**:
+- Log messages should start with a lowercase letter (not capitalized)
+- This is because log packages typically add timestamps/prefixes
+- Good: `log.Println("processing request")`  or `log.Printf("user %s not found", userID)`
+- Bad:  `log.Println("Processing request")`  or `log.Printf("User %s not found", userID)`
+- Exceptions: Proper nouns, acronyms, and names should remain capitalized (e.g., "GitHub", "API", "LangGraph")
+
 ## Development Workflow
 
-1. Make changes
-2. `make fmt` - Format code
-3. `make check` - Run fmt-check, vet, lint
+**MANDATORY: After completing any code changes, always run:**
+1. `make fmt` - Format code with gofmt
+2. `make vet` - Run go vet
+3. `make lint` - Run golangci-lint
+
+Only after these pass, proceed with:
 4. `make test` - Run tests
 5. Commit
+
+**Quick check command:** `make check` (runs fmt-check, vet, lint in one command)
 
 ## Single Test Execution
 

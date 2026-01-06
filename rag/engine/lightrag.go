@@ -171,14 +171,14 @@ func (l *LightRAGEngine) naiveRetrieval(ctx context.Context, query string, confi
 	contextStr := l.buildNaiveContext(searchResults)
 
 	return &rag.QueryResult{
-		Query:   query,
-		Sources: docs,
-		Context: contextStr,
+		Query:      query,
+		Sources:    docs,
+		Context:    contextStr,
 		Confidence: l.calculateNaiveConfidence(searchResults),
 		Metadata: map[string]any{
-			"mode":            "naive",
-			"num_results":     len(searchResults),
-			"avg_score":       l.avgScore(searchResults),
+			"mode":        "naive",
+			"num_results": len(searchResults),
+			"avg_score":   l.avgScore(searchResults),
 		},
 	}, nil
 }
@@ -288,10 +288,10 @@ func (l *LightRAGEngine) globalRetrieval(ctx context.Context, query string, conf
 		Context:    contextStr,
 		Confidence: l.calculateGlobalConfidence(communities),
 		Metadata: map[string]any{
-			"mode":                "global",
-			"num_communities":     len(communities),
-			"query_entities":      len(queryEntities),
-			"include_hierarchy":   l.config.GlobalConfig.IncludeHierarchy,
+			"mode":              "global",
+			"num_communities":   len(communities),
+			"query_entities":    len(queryEntities),
+			"include_hierarchy": l.config.GlobalConfig.IncludeHierarchy,
 		},
 	}, nil
 }
@@ -341,14 +341,14 @@ func (l *LightRAGEngine) hybridRetrieval(ctx context.Context, query string, conf
 		Context:    contextStr,
 		Confidence: combinedConfidence,
 		Metadata: map[string]any{
-			"mode":             "hybrid",
-			"fusion_method":    l.config.HybridConfig.FusionMethod,
-			"local_weight":     l.config.HybridConfig.LocalWeight,
-			"global_weight":    l.config.HybridConfig.GlobalWeight,
-			"local_confidence": localResult.Confidence,
+			"mode":              "hybrid",
+			"fusion_method":     l.config.HybridConfig.FusionMethod,
+			"local_weight":      l.config.HybridConfig.LocalWeight,
+			"global_weight":     l.config.HybridConfig.GlobalWeight,
+			"local_confidence":  localResult.Confidence,
 			"global_confidence": globalResult.Confidence,
-			"local_count":      len(localResult.Sources),
-			"global_count":     len(globalResult.Sources),
+			"local_count":       len(localResult.Sources),
+			"global_count":      len(globalResult.Sources),
 		},
 	}, nil
 }
@@ -604,14 +604,14 @@ func (l *LightRAGEngine) buildCommunities(ctx context.Context) error {
 
 	// Create a default community
 	community := &rag.Community{
-		ID:      "community_0",
-		Level:   0,
-		Title:   "Default Community",
-		Summary: "All entities grouped together",
-		Entities: make([]string, 0),
+		ID:         "community_0",
+		Level:      0,
+		Title:      "Default Community",
+		Summary:    "All entities grouped together",
+		Entities:   make([]string, 0),
 		Properties: make(map[string]any),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	// Get all entities from the knowledge graph
