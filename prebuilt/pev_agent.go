@@ -317,11 +317,11 @@ func parsePEVPlanSteps(planText string) []string {
 }
 
 func executePEVStep(ctx context.Context, step string, te *ToolExecutor, model llms.Model) (string, error) {
-	if te == nil || len(te.tools) == 0 {
+	if te == nil || len(te.Tools) == 0 {
 		return "Error: No tools", nil
 	}
 	var toolsInfo strings.Builder
-	for name, tool := range te.tools {
+	for name, tool := range te.Tools {
 		toolsInfo.WriteString(fmt.Sprintf("- %s: %s\n", name, tool.Description()))
 	}
 	prompt := fmt.Sprintf("Select tool for: %s\nTools:\n%s\nReturn JSON: {\"tool\": \"name\", \"tool_input\": \"input\"}", step, toolsInfo.String())

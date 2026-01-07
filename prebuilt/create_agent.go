@@ -134,13 +134,7 @@ func CreateAgentMap(model llms.Model, inputTools []tools.Tool, maxIterations int
 				Function: &llms.FunctionDefinition{
 					Name:        t.Name(),
 					Description: t.Description(),
-					Parameters: map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"input": map[string]any{"type": "string", "description": "The input query"},
-						},
-						"required": []string{"input"},
-					},
+					Parameters:  getToolSchema(t),
 				},
 			})
 		}
@@ -186,12 +180,30 @@ func CreateAgentMap(model llms.Model, inputTools []tools.Tool, maxIterations int
 		var toolMessages []llms.MessageContent
 		for _, part := range lastMsg.Parts {
 			if tc, ok := part.(llms.ToolCall); ok {
-				var args map[string]any
-				_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
-				inputVal, _ := args["input"].(string)
-				if inputVal == "" {
+				// Get the tool to check if it has a custom schema
+				tool, hasTool := toolExecutor.Tools[tc.FunctionCall.Name]
+
+				var inputVal string
+				if hasTool {
+					// Check if tool has custom schema
+					if _, hasCustomSchema := tool.(ToolWithSchema); hasCustomSchema {
+						// Tool has custom schema, pass JSON arguments directly
+						inputVal = tc.FunctionCall.Arguments
+					} else {
+						// Tool uses default schema, try to extract "input" field
+						var args map[string]any
+						_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
+						if val, ok := args["input"].(string); ok {
+							inputVal = val
+						} else {
+							inputVal = tc.FunctionCall.Arguments
+						}
+					}
+				} else {
+					// Tool not found, use arguments as-is
 					inputVal = tc.FunctionCall.Arguments
 				}
+
 				res, err := toolExecutor.Execute(ctx, ToolInvocation{Tool: tc.FunctionCall.Name, ToolInput: inputVal})
 				if err != nil {
 					res = fmt.Sprintf("Error: %v", err)
@@ -255,13 +267,7 @@ func CreateAgent[S any](
 				Function: &llms.FunctionDefinition{
 					Name:        t.Name(),
 					Description: t.Description(),
-					Parameters: map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"input": map[string]any{"type": "string", "description": "The input query"},
-						},
-						"required": []string{"input"},
-					},
+					Parameters:  getToolSchema(t),
 				},
 			})
 		}
@@ -299,12 +305,30 @@ func CreateAgent[S any](
 		var toolMessages []llms.MessageContent
 		for _, part := range lastMsg.Parts {
 			if tc, ok := part.(llms.ToolCall); ok {
-				var args map[string]any
-				_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
-				inputVal, _ := args["input"].(string)
-				if inputVal == "" {
+				// Get the tool to check if it has a custom schema
+				tool, hasTool := toolExecutor.Tools[tc.FunctionCall.Name]
+
+				var inputVal string
+				if hasTool {
+					// Check if tool has custom schema
+					if _, hasCustomSchema := tool.(ToolWithSchema); hasCustomSchema {
+						// Tool has custom schema, pass JSON arguments directly
+						inputVal = tc.FunctionCall.Arguments
+					} else {
+						// Tool uses default schema, try to extract "input" field
+						var args map[string]any
+						_ = json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args)
+						if val, ok := args["input"].(string); ok {
+							inputVal = val
+						} else {
+							inputVal = tc.FunctionCall.Arguments
+						}
+					}
+				} else {
+					// Tool not found, use arguments as-is
 					inputVal = tc.FunctionCall.Arguments
 				}
+
 				res, err := toolExecutor.Execute(ctx, ToolInvocation{Tool: tc.FunctionCall.Name, ToolInput: inputVal})
 				if err != nil {
 					res = fmt.Sprintf("Error: %v", err)

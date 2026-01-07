@@ -7,6 +7,11 @@ import (
 	"github.com/tmc/langchaingo/tools"
 )
 
+// ToolWithSchema is an optional interface that tools can implement to provide their parameter schema
+type ToolWithSchema interface {
+	Schema() map[string]any
+}
+
 // ToolInvocation represents a request to execute a tool
 type ToolInvocation struct {
 	Tool      string `json:"tool"`
@@ -15,7 +20,7 @@ type ToolInvocation struct {
 
 // ToolExecutor executes tools based on invocations
 type ToolExecutor struct {
-	tools map[string]tools.Tool
+	Tools map[string]tools.Tool
 }
 
 // NewToolExecutor creates a new ToolExecutor with the given tools
@@ -25,18 +30,39 @@ func NewToolExecutor(inputTools []tools.Tool) *ToolExecutor {
 		toolMap[t.Name()] = t
 	}
 	return &ToolExecutor{
-		tools: toolMap,
+		Tools: toolMap,
 	}
 }
 
 // Execute executes a single tool invocation
 func (te *ToolExecutor) Execute(ctx context.Context, invocation ToolInvocation) (string, error) {
-	tool, ok := te.tools[invocation.Tool]
+	tool, ok := te.Tools[invocation.Tool]
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", invocation.Tool)
 	}
 
 	return tool.Call(ctx, invocation.ToolInput)
+}
+
+// getToolSchema returns the parameter schema for a tool.
+// If the tool implements ToolWithSchema, it uses the tool's custom schema.
+// Otherwise, it returns the default simple schema with an "input" string field.
+func getToolSchema(tool tools.Tool) map[string]any {
+	if st, ok := tool.(ToolWithSchema); ok {
+		return st.Schema()
+	}
+	// Default schema for tools without custom schema
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"input": map[string]any{
+				"type":        "string",
+				"description": "The input query for the tool",
+			},
+		},
+		"required":             []string{"input"},
+		"additionalProperties": false,
+	}
 }
 
 // ExecuteMany executes multiple tool invocations in parallel (if needed, but here sequential for simplicity)
