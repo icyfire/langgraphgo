@@ -3,6 +3,7 @@ package retriever
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/smallnest/langgraphgo/rag"
@@ -64,10 +65,7 @@ func (r *LLMReranker) Rerank(ctx context.Context, query string, documents []rag.
 
 	// Score documents in batches for efficiency
 	for i := 0; i < len(documents); i += r.config.BatchSize {
-		end := i + r.config.BatchSize
-		if end > len(documents) {
-			end = len(documents)
-		}
+		end := min(i+r.config.BatchSize, len(documents))
 		batch := documents[i:end]
 
 		batchScores, err := r.scoreBatch(ctx, query, batch)
@@ -230,7 +228,7 @@ func (r *LLMReranker) extractNumbers(text string, expectedCount int) ([]float64,
 	// Simple number extraction
 	scores := make([]float64, 0, expectedCount)
 	var num float64
-	for _, s := range strings.Fields(text) {
+	for s := range strings.FieldsSeq(text) {
 		_, err := fmt.Sscanf(s, "%f", &num)
 		if err == nil && num >= 0 && num <= 1 {
 			scores = append(scores, num)
@@ -257,11 +255,7 @@ func (r *LLMReranker) extractNumbers(text string, expectedCount int) ([]float64,
 // mergeMetadata merges two metadata maps
 func (r *LLMReranker) mergeMetadata(m1, m2 map[string]any) map[string]any {
 	result := make(map[string]any)
-	for k, v := range m1 {
-		result[k] = v
-	}
-	for k, v := range m2 {
-		result[k] = v
-	}
+	maps.Copy(result, m1)
+	maps.Copy(result, m2)
 	return result
 }

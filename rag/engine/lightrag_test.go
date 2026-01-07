@@ -543,7 +543,7 @@ func BenchmarkLightRAGEngine_AddDocuments(b *testing.B) {
 	}
 
 	docs := make([]rag.Document, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docs[i] = rag.Document{
 			ID:        fmt.Sprintf("doc%d", i),
 			Content:   strings.Repeat("Test content ", 100),
@@ -552,8 +552,7 @@ func BenchmarkLightRAGEngine_AddDocuments(b *testing.B) {
 		}
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = engine.AddDocuments(ctx, docs)
 	}
 }
@@ -581,7 +580,7 @@ func BenchmarkLightRAGEngine_Query(b *testing.B) {
 	}
 
 	docs := make([]rag.Document, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docs[i] = rag.Document{
 			ID:        fmt.Sprintf("doc%d", i),
 			Content:   strings.Repeat("Test content ", 100),
@@ -592,8 +591,7 @@ func BenchmarkLightRAGEngine_Query(b *testing.B) {
 
 	_ = engine.AddDocuments(ctx, docs)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = engine.Query(ctx, "test query")
 	}
 }

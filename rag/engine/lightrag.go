@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -335,21 +336,28 @@ func (l *LightRAGEngine) hybridRetrieval(ctx context.Context, query string, conf
 	combinedConfidence := (localResult.Confidence * l.config.HybridConfig.LocalWeight) +
 		(globalResult.Confidence * l.config.HybridConfig.GlobalWeight)
 
+	// Build metadata with scores
+	metadata := map[string]any{
+		"mode":              "hybrid",
+		"fusion_method":     l.config.HybridConfig.FusionMethod,
+		"local_weight":      l.config.HybridConfig.LocalWeight,
+		"global_weight":     l.config.HybridConfig.GlobalWeight,
+		"local_confidence":  localResult.Confidence,
+		"global_confidence": globalResult.Confidence,
+		"local_count":       len(localResult.Sources),
+		"global_count":      len(globalResult.Sources),
+	}
+	// Add fused scores to metadata if available
+	if fusedScores != nil {
+		metadata["fused_scores"] = fusedScores
+	}
+
 	return &rag.QueryResult{
 		Query:      query,
 		Sources:    fusedDocs,
 		Context:    contextStr,
 		Confidence: combinedConfidence,
-		Metadata: map[string]any{
-			"mode":              "hybrid",
-			"fusion_method":     l.config.HybridConfig.FusionMethod,
-			"local_weight":      l.config.HybridConfig.LocalWeight,
-			"global_weight":     l.config.HybridConfig.GlobalWeight,
-			"local_confidence":  localResult.Confidence,
-			"global_confidence": globalResult.Confidence,
-			"local_count":       len(localResult.Sources),
-			"global_count":      len(globalResult.Sources),
-		},
+		Metadata:   metadata,
 	}, nil
 }
 
@@ -470,10 +478,7 @@ func (l *LightRAGEngine) splitDocument(doc rag.Document) []rag.Document {
 	overlap := l.config.ChunkOverlap
 
 	for i := 0; i < len(content); {
-		end := i + chunkSize
-		if end > len(content) {
-			end = len(content)
-		}
+		end := min(i+chunkSize, len(content))
 
 		chunk := rag.Document{
 			ID:      fmt.Sprintf("%s_chunk_%d", doc.ID, len(chunks)),
@@ -581,11 +586,8 @@ func (l *LightRAGEngine) findRelevantCommunities(ctx context.Context, query stri
 	for _, entity := range queryEntities {
 		for _, community := range l.communityCache {
 			// Check if entity is in this community
-			for _, entityID := range community.Entities {
-				if entityID == entity.ID {
-					communities = append(communities, community)
-					break
-				}
+			if slices.Contains(community.Entities, entity.ID) {
+				communities = append(communities, community)
 			}
 		}
 	}

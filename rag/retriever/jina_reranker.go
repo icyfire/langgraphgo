@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"time"
@@ -192,11 +193,7 @@ func (r *JinaReranker) Rerank(ctx context.Context, query string, documents []rag
 // mergeMetadata merges two metadata maps
 func (r *JinaReranker) mergeMetadata(m1, m2 map[string]any) map[string]any {
 	result := make(map[string]any)
-	for k, v := range m1 {
-		result[k] = v
-	}
-	for k, v := range m2 {
-		result[k] = v
-	}
+	maps.Copy(result, m1)
+	maps.Copy(result, m2)
 	return result
 }
