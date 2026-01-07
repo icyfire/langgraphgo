@@ -284,10 +284,10 @@ func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
 		if event, ok := latestCP.Metadata["event"].(string); ok && event == "step" {
 			// The checkpoint was saved after a step completed
 			// We need to check if there was an interrupt by looking at the state
-			// State might be OrderState or map[string]interface{} (from JSON deserialization)
+			// State might be OrderState or map[string]any (from JSON deserialization)
 			if state, ok := latestCP.State.(OrderState); ok && state.IsInterrupt {
 				isResuming = true
-			} else if m, ok := latestCP.State.(map[string]interface{}); ok {
+			} else if m, ok := latestCP.State.(map[string]any); ok {
 				// Check for is_interrupt in map
 				if isInterrupt, ok := m["is_interrupt"].(bool); ok && isInterrupt {
 					isResuming = true
@@ -305,8 +305,8 @@ func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
 		if cpState, ok := latestCP.State.(OrderState); ok {
 			initialState = cpState
 		} else {
-			// Handle case where state is map[string]interface{}
-			if m, ok := latestCP.State.(map[string]interface{}); ok {
+			// Handle case where state is map[string]any
+			if m, ok := latestCP.State.(map[string]any); ok {
 				// Convert map to OrderState (simplified - in production use proper JSON unmarshaling)
 				initialState.SessionId = toString(m["session_id"])
 				initialState.UserInput = req.Content

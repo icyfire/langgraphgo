@@ -42,7 +42,7 @@ func WikipediaSearch(query string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Wikipedia API returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("wikipedia API returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)

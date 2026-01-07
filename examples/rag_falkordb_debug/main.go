@@ -49,11 +49,11 @@ func main() {
 	fmt.Printf("FalkorDB response value: %v\n", res)
 
 	// Check response structure
-	if r, ok := res.([]interface{}); ok {
-		fmt.Printf("Response is []interface{} with length: %d\n", len(r))
+	if r, ok := res.([]any); ok {
+		fmt.Printf("Response is []any with length: %d\n", len(r))
 		for i, v := range r {
 			fmt.Printf("  [%d] type: %T, value: %v\n", i, v, v)
-			if innerSlice, ok := v.([]interface{}); ok {
+			if innerSlice, ok := v.([]any); ok {
 				fmt.Printf("      Inner slice length: %d\n", len(innerSlice))
 				for j, innerV := range innerSlice {
 					fmt.Printf("        [%d] type: %T, value: %v\n", j, innerV, innerV)
@@ -61,7 +61,7 @@ func main() {
 			}
 		}
 	} else {
-		fmt.Printf("Response is not []interface{}, it's %s\n", reflect.TypeOf(res).String())
+		fmt.Printf("Response is not []any, it's %s\n", reflect.TypeOf(res).String())
 	}
 
 	// Test creating a graph node
@@ -123,7 +123,7 @@ func main() {
 	fmt.Println("\nTesting entity creation like in the example...")
 
 	// Test propsToString function
-	testProps := map[string]interface{}{
+	testProps := map[string]any{
 		"name":        "Apple Inc.",
 		"type":        "ORGANIZATION",
 		"description": "Technology company",
@@ -143,7 +143,7 @@ func main() {
 	} else {
 		fmt.Printf("Raw response type: %T\n", rawResponse)
 		fmt.Printf("Raw response: %v\n", rawResponse)
-		if r, ok := rawResponse.([]interface{}); ok {
+		if r, ok := rawResponse.([]any); ok {
 			fmt.Printf("Raw response length: %d\n", len(r))
 			for i, v := range r {
 				fmt.Printf("  [%d] type: %T, value: %v\n", i, v, v)
@@ -169,10 +169,10 @@ func main() {
 }
 
 // Helper function to test propsToString
-func propsToString(m map[string]interface{}) string {
+func propsToString(m map[string]any) string {
 	parts := []string{}
 	for k, v := range m {
-		var val interface{}
+		var val any
 		switch v := v.(type) {
 		case []float32:
 			// Convert to Cypher list: [v1, v2, ...]
@@ -189,7 +189,7 @@ func propsToString(m map[string]interface{}) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-func quoteString(i interface{}) interface{} {
+func quoteString(i any) any {
 	switch x := i.(type) {
 	case string:
 		if len(x) == 0 {

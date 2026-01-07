@@ -185,11 +185,11 @@ func main() {
 		}
 
 		// Parse the result (simplified parsing for non-compact mode)
-		if r, ok := result.([]interface{}); ok && len(r) > 1 {
-			if rows, ok := r[1].([]interface{}); ok && len(rows) > 0 {
+		if r, ok := result.([]any); ok && len(r) > 1 {
+			if rows, ok := r[1].([]any); ok && len(rows) > 0 {
 				fmt.Printf("Results:\n")
 				for j, row := range rows {
-					if rowArr, ok := row.([]interface{}); ok {
+					if rowArr, ok := row.([]any); ok {
 						fmt.Printf("  [%d] ", j+1)
 						for k, item := range rowArr {
 							if str, ok := item.(string); ok {
@@ -240,11 +240,11 @@ func main() {
 			continue
 		}
 
-		if r, ok := result.([]interface{}); ok && len(r) > 1 {
-			if rows, ok := r[1].([]interface{}); ok && len(rows) > 0 {
+		if r, ok := result.([]any); ok && len(r) > 1 {
+			if rows, ok := r[1].([]any); ok && len(rows) > 0 {
 				fmt.Printf("Results:\n")
 				for j, row := range rows {
-					if rowArr, ok := row.([]interface{}); ok {
+					if rowArr, ok := row.([]any); ok {
 						fmt.Printf("  [%d] ", j+1)
 						for k, item := range rowArr {
 							if str, ok := item.(string); ok {
@@ -284,9 +284,9 @@ func main() {
 			continue
 		}
 
-		if r, ok := result.([]interface{}); ok && len(r) > 1 {
-			if rows, ok := r[1].([]interface{}); ok && len(rows) > 0 {
-				if row, ok := rows[0].([]interface{}); ok && len(row) > 0 {
+		if r, ok := result.([]any); ok && len(r) > 1 {
+			if rows, ok := r[1].([]any); ok && len(rows) > 0 {
+				if row, ok := rows[0].([]any); ok && len(row) > 0 {
 					if count, ok := row[0].(int64); ok {
 						fmt.Printf("%s: %d\n", stat.name, count)
 					}

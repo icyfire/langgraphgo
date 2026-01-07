@@ -221,14 +221,14 @@ func main() {
 		// We need to cast state to map[string]any
 		stateMap, ok := latest.State.(map[string]any)
 		if !ok {
-			// handle parsing if loaded as generic interface{} (unmarshalled from JSON)
-			// JSON unmarshal to interface{} makes maps map[string]interface{}
+			// handle parsing if loaded as generic any (unmarshalled from JSON)
+			// JSON unmarshal to any makes maps map[string]any
 			// So simple cast might work, or we need more robust handling.
 			// For now, let's assume it works or we re-marshal.
 			// Actually, NewDiskStore uses json.Unmarshal into *graph.Checkpoint.
 			// graph.Checkpoint.State is `any`.
 			// If we save map[string]any, JSON marshals it.
-			// Unmarshal will give map[string]interface{}.
+			// Unmarshal will give map[string]any.
 			// So the cast should be fine.
 			stateMap = latest.State.(map[string]any)
 		}

@@ -111,7 +111,7 @@ func (r *CohereReranker) Rerank(ctx context.Context, query string, documents []r
 	}
 
 	if r.apiKey == "" {
-		return nil, fmt.Errorf("Cohere API key is required. Set COHERE_API_KEY environment variable or pass apiKey parameter")
+		return nil, fmt.Errorf("cohere API key is required. Set COHERE_API_KEY environment variable or pass apiKey parameter")
 	}
 
 	// Prepare request body

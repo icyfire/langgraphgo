@@ -356,11 +356,11 @@ func (t MortgageCalculatorTool) Call(ctx context.Context, input string) (string,
 
 // BatchOperationItem 批量操作中的单个项目
 type BatchOperationItem struct {
-	ID       string                 `json:"id"`
-	Action   string                 `json:"action"` // create, update, delete
-	Quantity int                    `json:"quantity"`
-	Price    float64                `json:"price"`
-	Metadata map[string]interface{} `json:"metadata"`
+	ID       string         `json:"id"`
+	Action   string         `json:"action"` // create, update, delete
+	Quantity int            `json:"quantity"`
+	Price    float64        `json:"price"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 // BatchOperationParams 批量操作参数

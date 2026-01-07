@@ -2,6 +2,8 @@ package doubao
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"os"
 	"testing"
 
@@ -1118,4 +1120,335 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestGetEnvOrDefault tests the getEnvOrDefault helper function.
+func TestGetEnvOrDefault(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		defaultValue string
+		setEnv       bool
+		envValue     string
+		expected     string
+	}{
+		{
+			name:         "env var not set",
+			key:          "NONEXISTENT_VAR",
+			defaultValue: "default",
+			setEnv:       false,
+			expected:     "default",
+		},
+		{
+			name:         "env var set with value",
+			key:          "TEST_DOUBAO_VAR",
+			defaultValue: "default",
+			setEnv:       true,
+			envValue:     "custom",
+			expected:     "custom",
+		},
+		{
+			name:         "env var set to empty string",
+			key:          "TEST_DOUBAO_EMPTY",
+			defaultValue: "default",
+			setEnv:       true,
+			envValue:     "",
+			expected:     "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up env var before and after test
+			if tt.setEnv {
+				defer os.Unsetenv(tt.key)
+			}
+
+			if tt.setEnv {
+				os.Setenv(tt.key, tt.envValue)
+			} else {
+				os.Unsetenv(tt.key)
+			}
+
+			result := getEnvOrDefault(tt.key, tt.defaultValue)
+			if result != tt.expected {
+				t.Errorf("getEnvOrDefault() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestLLM_WithHTTPClient tests the WithHTTPClient option.
+func TestLLM_WithHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	llm, err := New(
+		WithAPIKey("test-key"),
+		WithHTTPClient(client),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	if llm == nil {
+		t.Fatal("LLM is nil")
+	}
+
+	// Verify the LLM was created successfully with custom HTTP client
+	// We can't directly access the client, but successful creation is enough
+}
+
+// TestLLM_ModelNameType tests the ModelName type.
+func TestLLM_ModelNameType(t *testing.T) {
+	tests := []struct {
+		name  string
+		model ModelName
+	}{
+		{
+			name:  "string to ModelName",
+			model: ModelName("doubao-seed-1-8-251215"),
+		},
+		{
+			name:  "custom endpoint id",
+			model: ModelName("ep-20250107123456-abcd"),
+		},
+		{
+			name:  "empty model name",
+			model: ModelName(""),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Just verify the type can be created and used
+			llm, err := New(
+				WithAPIKey("test-key"),
+				WithModel(tt.model),
+			)
+			if err != nil {
+				t.Fatalf("Failed to create LLM: %v", err)
+			}
+
+			if llm.model != tt.model {
+				t.Errorf("model = %q, want %q", llm.model, tt.model)
+			}
+		})
+	}
+}
+
+// TestLLM_ErrorCases tests various error conditions.
+func TestLLM_ErrorCases(t *testing.T) {
+	t.Run("empty API key with empty env vars", func(t *testing.T) {
+		// Temporarily clear env vars
+		oldAPIKey := os.Getenv("DOUBAO_API_KEY")
+		oldAK := os.Getenv("DOUBAO_ACCESS_KEY")
+		oldSK := os.Getenv("DOUBAO_SECRET_KEY")
+		defer func() {
+			if oldAPIKey != "" {
+				os.Setenv("DOUBAO_API_KEY", oldAPIKey)
+			} else {
+				os.Unsetenv("DOUBAO_API_KEY")
+			}
+			if oldAK != "" {
+				os.Setenv("DOUBAO_ACCESS_KEY", oldAK)
+			} else {
+				os.Unsetenv("DOUBAO_ACCESS_KEY")
+			}
+			if oldSK != "" {
+				os.Setenv("DOUBAO_SECRET_KEY", oldSK)
+			} else {
+				os.Unsetenv("DOUBAO_SECRET_KEY")
+			}
+		}()
+		os.Unsetenv("DOUBAO_API_KEY")
+		os.Unsetenv("DOUBAO_ACCESS_KEY")
+		os.Unsetenv("DOUBAO_SECRET_KEY")
+
+		_, err := New(
+			WithAPIKey(""),
+		)
+		if err == nil {
+			t.Error("Expected error for empty API key")
+		}
+		if err != nil && !errors.Is(err, ErrNoAuth) {
+			t.Errorf("Expected ErrNoAuth, got %v", err)
+		}
+	})
+
+	t.Run("only access key provided", func(t *testing.T) {
+		// Clear env vars first
+		os.Unsetenv("DOUBAO_API_KEY")
+		os.Unsetenv("DOUBAO_ACCESS_KEY")
+		os.Unsetenv("DOUBAO_SECRET_KEY")
+
+		_, err := New(
+			WithAccessKey("test-ak"),
+		)
+		if err == nil {
+			t.Error("Expected error when only access key is provided")
+		}
+		if err != nil && !errors.Is(err, ErrNoAuth) {
+			t.Errorf("Expected ErrNoAuth, got %v", err)
+		}
+	})
+
+	t.Run("only secret key provided", func(t *testing.T) {
+		// Clear env vars first
+		os.Unsetenv("DOUBAO_API_KEY")
+		os.Unsetenv("DOUBAO_ACCESS_KEY")
+		os.Unsetenv("DOUBAO_SECRET_KEY")
+
+		_, err := New(
+			WithSecretKey("test-sk"),
+		)
+		if err == nil {
+			t.Error("Expected error when only secret key is provided")
+		}
+		if err != nil && !errors.Is(err, ErrNoAuth) {
+			t.Errorf("Expected ErrNoAuth, got %v", err)
+		}
+	})
+}
+
+// TestLLM_GenerateContent_WithOptions tests GenerateContent with various options.
+func TestLLM_GenerateContent_WithOptions(t *testing.T) {
+	apiKey := os.Getenv("DOUBAO_API_KEY")
+	if apiKey == "" {
+		t.Skip("DOUBAO_API_KEY not set")
+	}
+
+	model := getTestModel()
+	if model == "" {
+		t.Skip("DOUBAO_MODEL not set")
+	}
+
+	llm, err := New(
+		WithAPIKey(apiKey),
+		WithModel(model),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	ctx := context.Background()
+	messages := []llms.MessageContent{
+		{
+			Role: llms.ChatMessageTypeHuman,
+			Parts: []llms.ContentPart{
+				llms.TextPart("Say hello"),
+			},
+		},
+	}
+
+	// Test with temperature
+	resp, err := llm.GenerateContent(ctx, messages, llms.WithTemperature(0.7))
+	if err != nil {
+		t.Logf("GenerateContent with temperature failed: %v", err)
+	} else {
+		if len(resp.Choices) == 0 {
+			t.Error("No choices in response")
+		}
+		t.Logf("Response with temperature: %s", resp.Choices[0].Content)
+	}
+
+	// Test with top_p
+	resp, err = llm.GenerateContent(ctx, messages, llms.WithTopP(0.9))
+	if err != nil {
+		t.Logf("GenerateContent with top_p failed: %v", err)
+	} else {
+		if len(resp.Choices) == 0 {
+			t.Error("No choices in response")
+		}
+		t.Logf("Response with top_p: %s", resp.Choices[0].Content)
+	}
+
+	// Test with max tokens
+	resp, err = llm.GenerateContent(ctx, messages, llms.WithMaxTokens(100))
+	if err != nil {
+		t.Logf("GenerateContent with max tokens failed: %v", err)
+	} else {
+		if len(resp.Choices) == 0 {
+			t.Error("No choices in response")
+		}
+		t.Logf("Response with max tokens: %s", resp.Choices[0].Content)
+	}
+
+	// Test with all options
+	resp, err = llm.GenerateContent(ctx, messages,
+		llms.WithTemperature(0.5),
+		llms.WithTopP(0.8),
+		llms.WithMaxTokens(50),
+	)
+	if err != nil {
+		t.Logf("GenerateContent with all options failed: %v", err)
+	} else {
+		if len(resp.Choices) == 0 {
+			t.Error("No choices in response")
+		}
+		t.Logf("Response with all options: %s", resp.Choices[0].Content)
+	}
+}
+
+// TestLLM_ConvertMessage_MultiPart tests convertMessage with multiple parts.
+func TestLLM_ConvertMessage_MultiPart(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      llms.MessageContent
+		wantErr  bool
+		validate func(*testing.T, *model.ChatCompletionMessage)
+	}{
+		{
+			name: "user message with multiple text parts",
+			msg: llms.MessageContent{
+				Role: llms.ChatMessageTypeHuman,
+				Parts: []llms.ContentPart{
+					llms.TextPart("Hello, "),
+					llms.TextPart("world!"),
+				},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, m *model.ChatCompletionMessage) {
+				if m.Content == nil {
+					t.Error("Expected content to be set")
+				} else if m.Content.StringValue == nil {
+					t.Error("Expected StringValue to be set")
+				} else {
+					// The convertMessage function only uses the first text part
+					if *m.Content.StringValue != "Hello, " {
+						t.Errorf("Expected 'Hello, ', got %q", *m.Content.StringValue)
+					}
+				}
+			},
+		},
+		{
+			name: "system message",
+			msg: llms.MessageContent{
+				Role: llms.ChatMessageTypeSystem,
+				Parts: []llms.ContentPart{
+					llms.TextPart("You are a helpful assistant"),
+				},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, m *model.ChatCompletionMessage) {
+				if m.Role != "system" {
+					t.Errorf("Expected role 'system', got '%s'", m.Role)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, err := convertMessage(tt.msg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertMessage() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.validate != nil {
+				tt.validate(t, msg)
+			}
+		})
+	}
 }

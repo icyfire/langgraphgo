@@ -143,7 +143,7 @@ func main() {
 			fmt.Printf("Error resuming: %v\n", err)
 		} else {
 			// Since data is loaded from JSON (via Postgres), it typically comes back as map[string]any
-			// if the store implementation unmarshals into interface{}.
+			// if the store implementation unmarshals into any.
 			// Checkpoint.State is 'any'.
 			// We need to convert it back to ProcessState.
 

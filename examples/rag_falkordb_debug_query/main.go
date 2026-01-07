@@ -47,8 +47,8 @@ func main() {
 		log.Printf("查询PERSON节点失败: %v", err)
 	} else {
 		fmt.Printf("PERSON节点: %v\n", result)
-		if r, ok := result.([]interface{}); ok && len(r) > 1 {
-			if rows, ok := r[1].([]interface{}); ok {
+		if r, ok := result.([]any); ok && len(r) > 1 {
+			if rows, ok := r[1].([]any); ok {
 				fmt.Printf("找到 %d 个PERSON节点\n", len(rows))
 				for i, row := range rows {
 					fmt.Printf("  [%d] %v\n", i, row)
@@ -127,14 +127,14 @@ func main() {
 		log.Printf("调试查询失败: %v", err)
 	} else {
 		fmt.Printf("test_person原始数据: %v\n", debugResult)
-		if r, ok := debugResult.([]interface{}); ok && len(r) > 1 {
-			if rows, ok := r[1].([]interface{}); ok && len(rows) > 0 {
-				if row, ok := rows[0].([]interface{}); ok && len(row) > 0 {
-					if node, ok := row[0].([]interface{}); ok {
+		if r, ok := debugResult.([]any); ok && len(r) > 1 {
+			if rows, ok := r[1].([]any); ok && len(rows) > 0 {
+				if row, ok := rows[0].([]any); ok && len(row) > 0 {
+					if node, ok := row[0].([]any); ok {
 						fmt.Printf("node结构长度: %d\n", len(node))
 						for i, part := range node {
 							fmt.Printf("  [%d] type: %T, value: %v\n", i, part, part)
-							if arr, ok := part.([]interface{}); ok {
+							if arr, ok := part.([]any); ok {
 								fmt.Printf("      子数组长度: %d\n", len(arr))
 								for j, subpart := range arr {
 									fmt.Printf("        [%d] type: %T, value: %v\n", j, subpart, subpart)

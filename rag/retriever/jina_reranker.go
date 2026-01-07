@@ -109,7 +109,7 @@ func (r *JinaReranker) Rerank(ctx context.Context, query string, documents []rag
 	}
 
 	if r.apiKey == "" {
-		return nil, fmt.Errorf("Jina API key is required. Set JINA_API_KEY environment variable or pass apiKey parameter")
+		return nil, fmt.Errorf("jina API key is required. Set JINA_API_KEY environment variable or pass apiKey parameter")
 	}
 
 	// Prepare request body

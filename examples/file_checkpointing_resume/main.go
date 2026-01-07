@@ -145,8 +145,8 @@ func main() {
 	// The state in checkpoint is generic 'any'. We cast it to map[string]any.
 	resumedState, ok := latestCP.State.(map[string]any)
 	if !ok {
-		// Try to handle map[string]interface{} from JSON unmarshal
-		if m, ok := latestCP.State.(map[string]interface{}); ok {
+		// Try to handle map[string]any from JSON unmarshal
+		if m, ok := latestCP.State.(map[string]any); ok {
 			resumedState = m
 		} else {
 			log.Fatalf("Failed to cast checkpoint state to map[string]any: %T", latestCP.State)
