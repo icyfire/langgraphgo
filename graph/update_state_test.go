@@ -29,9 +29,15 @@ func TestUpdateState(t *testing.T) {
 	runnable, err := g.CompileCheckpointable()
 	assert.NoError(t, err)
 
-	// 1. Run initial graph
+	// 1. Run initial graph with thread_id in config
 	ctx := context.Background()
-	res, err := runnable.Invoke(ctx, map[string]any{"count": 10})
+	threadID := runnable.GetExecutionID()
+	config := &Config{
+		Configurable: map[string]any{
+			"thread_id": threadID,
+		},
+	}
+	res, err := runnable.InvokeWithConfig(ctx, map[string]any{"count": 10}, config)
 	assert.NoError(t, err)
 
 	mRes := res
@@ -39,13 +45,14 @@ func TestUpdateState(t *testing.T) {
 
 	// 2. Update state manually (Human-in-the-loop)
 	// We want to add 5 to the count
-	config := &Config{
+	// config already has thread_id from previous Invoke
+	updateConfig := &Config{
 		Configurable: map[string]any{
-			"thread_id": runnable.GetExecutionID(),
+			"thread_id": threadID,
 		},
 	}
 
-	newConfig, err := runnable.UpdateState(ctx, config, "human", map[string]any{"count": 5})
+	newConfig, err := runnable.UpdateState(ctx, updateConfig, "human", map[string]any{"count": 5})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, newConfig.Configurable["checkpoint_id"])
 

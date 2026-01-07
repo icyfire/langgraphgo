@@ -1303,6 +1303,15 @@ func TestMaxCheckpoints_AutoCleanup_RedisStore(t *testing.T) {
 		Prefix:   "example_checkpoints:",
 		TTL:      1 * time.Hour,
 	})
+
+	// Test Redis connection before running the test
+	ctx := context.Background()
+	// Try to list checkpoints to test connection
+	_, err := store.List(ctx, "test-connection-check")
+	if err != nil {
+		t.Skipf("Redis not available on localhost:6379, skipping test: %v", err)
+	}
+
 	g := graph.NewCheckpointableStateGraph[map[string]any]()
 
 	// Add multiple nodes to create multiple checkpoints
@@ -1334,7 +1343,6 @@ func TestMaxCheckpoints_AutoCleanup_RedisStore(t *testing.T) {
 		t.Fatalf("Failed to compile: %v", err)
 	}
 
-	ctx := context.Background()
 	threadID := "test-max-checkpoints"
 
 	// Execute the graph with thread_id
