@@ -17,6 +17,18 @@
 
 ![](coverage.svg)
 
+## 🌐 基于 LangGraphGo 开发的网站展示
+
+以下是使用 LangGraphGo 构建的实际应用案例：
+
+| [Insight](https://insight.rpcx.io) | [NoteX](https://notex.rpcx.io) |
+|:---:|:---:|
+| ![](docs/insight.png) | ![](docs/notex.png) |
+
+**Insight** - AI 驱动的知识管理与洞察生成平台，通过 LangGraphGo 构建智能分析流程，帮助用户从海量信息中提取关键洞察。
+
+**NoteX** - 智能笔记与知识整理工具，结合 AI 能力实现自动分类、标签提取和内容关联，让知识管理更高效。
+
 ## 📦 安装
 
 ```bash

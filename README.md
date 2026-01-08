@@ -18,6 +18,18 @@ Website: [http://lango.rpcx.io](http://lango.rpcx.io)
 
 ![](coverage.svg)
 
+## 🌐 Websites Built with LangGraphGo
+
+Real-world applications built with LangGraphGo:
+
+| [Insight](https://insight.rpcx.io) | [NoteX](https://notex.rpcx.io) |
+|:---:|:---:|
+| ![](docs/insight.png) | ![](docs/notex.png) |
+
+**Insight** - An AI-powered knowledge management and insight generation platform that uses LangGraphGo to build intelligent analysis workflows, helping users extract key insights from massive amounts of information.
+
+**NoteX** - An intelligent note-taking and knowledge organization tool that leverages AI for automatic categorization, tag extraction, and content association, making knowledge management more efficient.
+
 ## 📦 Installation
 
 ```bash
