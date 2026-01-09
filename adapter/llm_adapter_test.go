@@ -3,9 +3,11 @@ package adapter
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 // mockLLM is a mock implementation of llms.Model for testing
@@ -110,7 +112,6 @@ func TestOpenAIAdapter_Generate(t *testing.T) {
 
 			ctx := context.Background()
 			result, err := adapter.Generate(ctx, tt.prompt)
-
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -180,7 +181,6 @@ func TestOpenAIAdapter_GenerateWithConfig(t *testing.T) {
 
 			ctx := context.Background()
 			result, err := adapter.GenerateWithConfig(ctx, tt.prompt, tt.config)
-
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -286,5 +286,67 @@ func TestOpenAIAdapter_ContextCancellation(t *testing.T) {
 	_, err := adapter.Generate(ctx, "test")
 	if err == nil {
 		t.Error("expected error due to context cancellation")
+	}
+}
+
+func TestStreamingLLM_WithStreamCallback(t *testing.T) {
+	llm, err := openai.New()
+	if err != nil {
+		t.Skip("skipping test: LLM creation failed (likely no API key configured)")
+	}
+
+	i := 1
+	var receivedChunks []string
+	streamCallback := func(chunk string) {
+		t.Logf("chunk #%d: %s", i, chunk)
+		receivedChunks = append(receivedChunks, chunk)
+	}
+
+	streamingLLM := WrapLLMWithStreaming(llm, streamCallback)
+
+	messages := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeHuman, "Say 'hello' in one word"),
+	}
+
+	ctx := context.Background()
+	result, err := streamingLLM.GenerateContent(ctx, messages)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(receivedChunks) == 0 {
+		t.Error("expected at least one chunk through callback")
+	}
+	if len(result.Choices) == 0 {
+		t.Error("expected at least one choice in result")
+	}
+
+	t.Logf("chunks: %s, result: %s", strings.Join(receivedChunks, ""), result.Choices[0].Content)
+}
+
+func TestStreamingLLM_WithNilStreamCallback(t *testing.T) {
+	llm, err := openai.New()
+	if err != nil {
+		t.Skip("skipping test: LLM creation failed (likely no API key configured)")
+	}
+
+	streamingLLM := WrapLLMWithStreaming(llm, nil)
+
+	messages := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeHuman, "Say 'hello' in one word"),
+	}
+
+	ctx := context.Background()
+	result, err := streamingLLM.GenerateContent(ctx, messages)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(result.Choices) == 0 {
+		t.Error("expected at least one choice in result")
 	}
 }

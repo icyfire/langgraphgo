@@ -109,7 +109,7 @@ func streamingWithEventsExample() {
 	type ProgressListener struct {
 		graph.NodeListenerFunc[StreamingState]
 		chunkCount int
-		chunks     [][]byte // Store all chunks in order
+		chunks     [][]byte   // Store all chunks in order
 		mu         sync.Mutex // Thread-safe chunk access
 	}
 

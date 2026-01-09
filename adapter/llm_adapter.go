@@ -52,3 +52,30 @@ func (o *OpenAIAdapter) GenerateWithSystem(ctx context.Context, system, prompt s
 	}
 	return "", nil
 }
+
+// StreamingLLM wraps an llms.Model to add streaming capability
+type StreamingLLM struct {
+	llms.Model
+	streamCallback func(chunk string)
+}
+
+// GenerateContent implements the streaming generation with llms.Model interface
+func (s *StreamingLLM) GenerateContent(ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	// Add streaming function to the options
+	options = append(options, llms.WithStreamingFunc(func(_ context.Context, chunk []byte) error {
+		if s.streamCallback != nil {
+			s.streamCallback(string(chunk))
+		}
+		return nil
+	}))
+
+	// Call the original LLM with modified options
+	return s.Model.GenerateContent(ctx, messages, options...)
+}
+
+func WrapLLMWithStreaming(llm llms.Model, streamCallback func(chunk string)) *StreamingLLM {
+	return &StreamingLLM{
+		Model:          llm,
+		streamCallback: streamCallback,
+	}
+}
