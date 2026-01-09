@@ -7,6 +7,7 @@ replace github.com/smallnest/langgraphgo => ../
 require (
 	github.com/kataras/golog v0.1.15
 	github.com/redis/go-redis/v9 v9.17.1
+	github.com/sashabaranov/go-openai v1.41.2
 	github.com/smallnest/goskills v0.4.1
 	github.com/smallnest/langgraphgo v0.7.0
 	github.com/tmc/langchaingo v0.1.14
@@ -39,7 +40,6 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.1.0 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
-	github.com/sashabaranov/go-openai v1.41.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	gitlab.com/golang-commonmark/html v0.0.0-20191124015941-a22733972181 // indirect
 	gitlab.com/golang-commonmark/linkify v0.0.0-20191026162114-a0c2df6c8f82 // indirect
