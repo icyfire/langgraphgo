@@ -300,6 +300,7 @@ func TestStreamingLLM_WithStreamCallback(t *testing.T) {
 	streamCallback := func(chunk string) {
 		t.Logf("chunk #%d: %s", i, chunk)
 		receivedChunks = append(receivedChunks, chunk)
+		i++
 	}
 
 	streamingLLM := WrapLLMWithStreaming(llm, streamCallback)
