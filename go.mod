@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pashagolub/pgxmock/v3 v3.4.0
+	github.com/philippgille/chromem-go v0.7.0
 	github.com/redis/go-redis/v9 v9.17.1
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/smallnest/goskills v0.4.1
