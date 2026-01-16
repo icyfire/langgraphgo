@@ -142,6 +142,8 @@
 //
 //   - pgvector (via adapter)
 //   - Redis (via adapter)
+//   - chromem-go (native Go implementation)
+//   - Chroma v2 API (native Go implementation)
 //   - Mock/In-memory store for testing
 //
 // # GraphRAG Features

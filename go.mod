@@ -22,6 +22,8 @@ require (
 
 require (
 	github.com/AssemblyAI/assemblyai-go-sdk v1.3.0 // indirect
+	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/amikos-tech/chroma-go v0.1.4 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
@@ -43,9 +45,12 @@ require (
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.26 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.1.0 // indirect
+	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/volcengine/volc-sdk-golang v1.0.23 // indirect
+	github.com/yalue/onnxruntime_go v1.19.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	gitlab.com/golang-commonmark/html v0.0.0-20191124015941-a22733972181 // indirect
