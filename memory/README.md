@@ -349,6 +349,50 @@ fmt.Printf("Compression Rate: %.2f\n", stats.CompressionRate)
 | Relationship tracking between topics | Graph-Based |
 | Aggressive compression with consolidation | Compression |
 | Sophisticated memory lifecycle management | OS-Like |
+| **Production agents with persistent memory** | **[memU](./memu/)** |
+
+### 10. memU (Advanced Agentic Memory)
+
+**Use case**: Production-grade agents requiring persistent, structured memory with AI-powered extraction
+
+**Pros**:
+- Persistent storage across sessions
+- Hierarchical memory structure (Resource → Item → Category)
+- AI-powered memory extraction and organization
+- Multimodal support (conversations, documents, images)
+- Dual retrieval methods (RAG for speed, LLM for understanding)
+- Self-evolving memory structure
+
+**Cons**:
+- Requires external service (cloud or self-hosted)
+- Network latency for API calls
+- Depends on memU service availability
+
+**Example**:
+```go
+import "github.com/smallnest/langgraphgo/memory/memu"
+
+client, _ := memu.NewClient(memu.Config{
+    BaseURL:        "https://api.memu.so",
+    APIKey:         os.Getenv("MEMU_API_KEY"),
+    UserID:         "user-123",
+    RetrieveMethod: "rag", // or "llm" for deep semantic search
+})
+
+// Add messages to persistent memory
+msg := memory.NewMessage("user", "I love drinking coffee in the morning")
+client.AddMessage(ctx, msg)
+
+// Retrieve relevant context with AI-powered understanding
+memories, _ := client.GetContext(ctx, "What are my morning preferences?")
+
+// Memories include:
+// - Category summaries (e.g., "preferences.md")
+// - Individual items (e.g., "prefers coffee", "early bird")
+// - Source references
+```
+
+**See**: [memU package documentation](./memu/) for complete API reference and examples.
 
 ## Integration Example
 

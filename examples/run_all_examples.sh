@@ -68,7 +68,7 @@ if ! go mod tidy > /dev/null 2>&1; then
 fi
 
 # 跳过的例子列表（耗时太久、需要 API key 或非本项目例子）
-SKIPPED_EXAMPLES="api_interrupt_demo|ptc_expense_analysis|reflection_agent|tool_brave|langchain_example|rag_falkordb_graph"
+SKIPPED_EXAMPLES="api_interrupt_demo|ptc_expense_analysis|reflection_agent|tool_brave|langchain_example|rag_falkordb_graph|memu_agent|rag_milvus_example|rag_chroma-v2-example|memu_agent"
 
 # 函数：运行单个例子
 run_example() {
