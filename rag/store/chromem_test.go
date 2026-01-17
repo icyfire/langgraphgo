@@ -193,7 +193,7 @@ func TestChromemVectorStore_ConcurrentOperations(t *testing.T) {
 	t.Run("Concurrent adds", func(t *testing.T) {
 		done := make(chan bool, 10)
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			go func(idx int) {
 				docs := []rag.Document{
 					{ID: fmt.Sprintf("concurrent-%d", idx), Content: fmt.Sprintf("content %d", idx), Embedding: []float32{float32(idx) * 0.1, 0, 0}},
@@ -204,7 +204,7 @@ func TestChromemVectorStore_ConcurrentOperations(t *testing.T) {
 		}
 
 		// Wait for all goroutines to complete
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 

@@ -5,12 +5,10 @@ go 1.25.0
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/alicebob/miniredis/v2 v2.35.0
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/kataras/golog v0.1.15
 	github.com/mattn/go-sqlite3 v1.14.32
-	github.com/ncruces/go-sqlite3 v0.30.4
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pashagolub/pgxmock/v3 v3.4.0
 	github.com/philippgille/chromem-go v0.7.0
@@ -46,10 +44,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.26 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.1.0 // indirect
-	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/tetratelabs/wazero v1.11.0 // indirect
 	github.com/volcengine/volc-sdk-golang v1.0.23 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
