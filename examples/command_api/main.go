@@ -12,6 +12,22 @@ func main() {
 	// Create a new state graph
 	g := graph.NewStateGraph[any]()
 
+	// Set up state merger to properly merge map updates
+	// This ensures that Command.Update merges fields instead of replacing the entire state
+	g.SetStateMerger(func(ctx context.Context, current any, results []any) (any, error) {
+		state := current.(map[string]any)
+		if state == nil {
+			state = make(map[string]any)
+		}
+		for _, res := range results {
+			resMap := res.(map[string]any)
+			for k, v := range resMap {
+				state[k] = v
+			}
+		}
+		return state, nil
+	})
+
 	g.AddNode("router", "router", func(ctx context.Context, state any) (any, error) {
 		m := state.(map[string]any)
 		val := m["value"].(int)
