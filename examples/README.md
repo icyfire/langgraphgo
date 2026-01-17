@@ -1,6 +1,6 @@
 # LangGraphGo Examples
 
-This directory contains **70+ examples** demonstrating the features of LangGraphGo.
+This directory contains **85+ examples** demonstrating the features of LangGraphGo.
 
 ## Table of Contents
 
@@ -56,6 +56,9 @@ This directory contains **70+ examples** demonstrating the features of LangGraph
 - **[Streaming Pipeline](streaming_pipeline/)** - Building streaming data processing pipelines
 - **[Listeners](listeners/)** - Attaching event listeners to the graph
 - **[Logger](logger/)** - Logging graph execution events
+- **[LLM Streaming](llm_streaming/)** - Basic LLM streaming with callbacks
+- **[LangChain Go Streaming](langchaingo_streaming/)** - LangChain Go integration with streaming
+- **[Adapter Streaming](adapter_streaming/)** - Custom adapter streaming implementation
 
 ## Persistence (Checkpointing)
 
@@ -70,6 +73,7 @@ This directory contains **70+ examples** demonstrating the features of LangGraph
 - **[Time Travel](time_travel/)** - Inspecting, modifying state history, and forking execution
 - **[Dynamic Interrupt](dynamic_interrupt/)** - Pausing execution from within a node using `graph.Interrupt`
 - **[Payment Interrupt](payment_interrupt/)** - Human approval workflow example for payment scenarios
+- **[API Interrupt Demo](api_interrupt_demo/)** - API-based interrupt demonstration for approval workflows
 
 ## Pre-built Agents
 
@@ -88,6 +92,7 @@ This directory contains **70+ examples** demonstrating the features of LangGraph
 - **[Mental Loop](mental_loop/)** - Simulator-in-the-Loop agent that tests actions in a sandbox before execution
 - **[Reflexive Metacognitive Agent](reflexive_metacognitive/)** - Self-aware agent with explicit self-model of capabilities
 - **[Reflexive Metacognitive Agent CN](reflexive_metacognitive_cn/)** - Chinese version of the reflexive metacognitive agent
+- **[Manus Agent](manus_agent/)** - Advanced agent for document processing workflows
 
 ### Multi-Agent Systems
 
@@ -134,11 +139,18 @@ Conversation memory strategies for maintaining context across sessions.
 - **[RAG Conditional](rag_conditional/)** - Conditional RAG workflow
 - **[RAG with Embeddings](rag_with_embeddings/)** - RAG using embeddings
 - **[RAG Query Rewrite](rag_query_rewrite/)** - RAG with query rewriting for better retrieval
+- **[LightRAG Simple](lightrag_simple/)** - Basic LightRAG usage
+- **[LightRAG Advanced](lightrag_advanced/)** - Advanced LightRAG patterns
 
 ### RAG with Vector Stores
 
 - **[RAG with VectorStores](rag_langchain_vectorstore_example/)** - RAG using LangChain VectorStores
 - **[RAG with Chroma](rag_chroma_example/)** - RAG using Chroma database
+- **[RAG with Chroma v2](rag_chroma-v2-example/)** - RAG using Chroma v2 database
+- **[RAG with Chromem](rag_chromem_example/)** - RAG using chromem-go in-memory store
+- **[RAG with Milvus](rag_milvus_example/)** - RAG using Milvus vector database
+- **[RAG with Qwen Ranker](rag_qwen_ranker_example/)** - RAG with Qwen-based reranking
+- **[RAG with Memory](rag_memory_example/)** - RAG with conversation memory integration
 
 ### GraphRAG (Knowledge Graph)
 
@@ -192,13 +204,13 @@ Some examples may require additional setup:
 | State Management | 5 | State schema and reducers |
 | Graph Structure | 7 | Routing, subgraphs, generics |
 | Parallel Execution | 2 | Concurrent execution patterns |
-| Streaming & Events | 4 | Real-time data flow |
+| Streaming & Events | 7 | Real-time data flow |
 | Persistence | 4 | Checkpointing and recovery |
-| Human-in-the-Loop | 4 | Interactive workflows |
-| Pre-built Agents | 17 | Ready-to-use agent patterns |
+| Human-in-the-Loop | 5 | Interactive workflows |
+| Pre-built Agents | 18 | Ready-to-use agent patterns |
 | PTC | 4 | Programmatic tool calling |
 | Memory | 6 | Conversation memory strategies |
-| RAG | 15 | Retrieval-augmented generation |
+| RAG | 22 | Retrieval-augmented generation |
 | Tools & Integrations | 6 | External service integrations |
 | Advanced | 1 | Visualization and debugging |
-| **Total** | **78+** | **Comprehensive examples** |
+| **Total** | **85+** | **Comprehensive examples** |

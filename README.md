@@ -125,7 +125,7 @@ func main() {
 
 ## 📚 Examples
 
-This project includes **70+ comprehensive examples** organized into categories:
+This project includes **85+ comprehensive examples** organized into categories:
 
 ### Featured Examples
 
@@ -155,7 +155,7 @@ This project includes **70+ comprehensive examples** organized into categories:
 - **[RAG](./examples/README.md#rag-retrieval-augmented-generation)** - Vector stores, GraphRAG with FalkorDB
 - **[Tools & Integrations](./examples/README.md#tools--integrations)** - Search tools, GoSkills, MCP
 
-**[View All 70+ Examples →](./examples/README.md)**
+**[View All 85+ Examples →](./examples/README.md)**
 
 ## 🔧 Key Concepts
 

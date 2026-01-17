@@ -124,7 +124,7 @@ func main() {
 
 ## 📚 示例
 
-本项目包含 **70+ 个综合示例**，按类别组织：
+本项目包含 **85+ 个综合示例**，按类别组织：
 
 ### 精选示例
 
@@ -154,7 +154,7 @@ func main() {
 - **[RAG](./examples/README.md#rag-retrieval-augmented-generation)** - 向量存储、FalkorDB GraphRAG
 - **[工具与集成](./examples/README.md#tools--integrations)** - 搜索工具、GoSkills、MCP
 
-**[查看全部 70+ 示例 →](./examples/README.md)**
+**[查看全部 85+ 示例 →](./examples/README.md)**
 
 ## 🔧 核心概念
 

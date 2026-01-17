@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.8.0] - 2025-01-17
+
+### Vector Stores & RAG Enhancements
+- **Milvus Support**: Added Milvus vector store integration (#59)
+  - High-performance vector database support for RAG applications
+  - Scalable solution for large-scale vector similarity search
+- **Chroma v2 Support**: Updated Chroma integration to v2 (#59)
+  - Latest Chroma client with improved performance and features
+  - Enhanced vector store capabilities
+- **Chromem-go Support**: Added chromem-go embedding store (#59)
+  - Lightweight, in-memory vector store option
+  - Fast and efficient for small to medium datasets
+- **Redis Vector Support**: Added Redis-based vector storage (#59)
+  - Leverage Redis for both checkpointing and vector storage
+  - Unified infrastructure for state and embeddings
+
+### RAG Features
+- **Qwen Ranker**: Added Qwen-based reranking for improved retrieval quality (#83)
+  - Intelligent reranking of retrieved documents
+  - Enhanced relevance scoring for RAG pipelines
+- **LightRAG Examples**: Added LightRAG integration examples
+  - `lightrag_simple`: Basic LightRAG usage
+  - `lightrag_advanced`: Advanced LightRAG patterns
+- **RAG with Memory**: Added memory-enhanced RAG example
+  - Combines conversation memory with retrieval-augmented generation
+  - Maintains context across multi-turn conversations
+
+### Streaming Enhancements
+- **StreamingLLM**: Added StreamingLLM support (#82)
+  - Efficient streaming for long-context conversations
+  - Reduced memory footprint for streaming applications
+- **Streaming Examples**: Added multiple streaming examples
+  - `llm_streaming`: Basic LLM streaming with callbacks
+  - `langchaingo_streaming`: LangChain Go integration with streaming
+  - `adapter_streaming`: Custom adapter streaming implementation
+
+### New Agents
+- **Manus Agent**: Added Manus agent pattern (#80)
+  - Advanced agent for document processing workflows
+  - Intelligent task orchestration for complex documents
+
+### Human-in-the-Loop Enhancements
+- **API Interrupt Demo**: Added API-based interrupt demonstration
+  - Shows how to implement approval workflows via API
+  - Demonstrates programmatic control of HITL patterns
+- **Payment Interrupt**: Enhanced payment approval workflow
+  - Real-world payment processing with human approval
+  - Secure transaction handling with interrupt points
+
+### Bug Fixes & Improvements
+- Fixed command_api example (#84)
+- Optimized checkpoint data isolation (#72)
+- Removed sqlite-vec dependency in favor of more robust solutions (#59)
+- Improved error handling and recovery mechanisms
+
+### Documentation
+- Updated examples README with new categorization
+- Enhanced documentation for vector store integrations
+- Added Chinese README_CN.md for new examples
+
 ## [0.7.0] - 2025-12-21
 
 ### Core Features
