@@ -230,6 +230,15 @@ vectorRetriever := retriever.NewVectorStoreRetriever(
 示例包含一个自定义的 `RerankingRetriever`，结合了向量搜索和 LLM 重排序：
 
 ```go
+import "github.com/smallnest/langgraphgo/llms/qwen"
+
+// 创建支持 encoding_format 的 Qwen 嵌入器
+embedder := qwen.NewEmbedder(
+    "https://api-inference.modelscope.cn/v1",
+    apiKey,
+    "Qwen/Qwen3-Embedding-4B",
+)
+
 type RerankingRetriever struct {
     vectorStore rag.VectorStore
     embedder    rag.Embedder
@@ -248,6 +257,8 @@ func (r *RerankingRetriever) RetrieveWithConfig(ctx context.Context, query strin
     return reranked, nil
 }
 ```
+
+**注意**：Qwen 嵌入器现在作为可重用包提供，位于 `github.com/smallnest/langgraphgo/llms/qwen`。你可以在自己的项目中使用它。
 
 ## 性能考虑
 
@@ -346,6 +357,17 @@ echo $OPENAI_API_KEY
 export OPENAI_EMBEDDING_MODEL=text-embedding-v3
 ```
 
+**错误**：`encoding_format must be 'float' or 'base64'`
+
+**解决方案**：本示例中的自定义 `QwenEmbedder` 已自动处理此问题，通过设置 `encoding_format: "float"`。如果你实现自己的嵌入器，请确保使用这些有效值之一。
+
+**错误**：`API returned status 429: We have to rate limit you`
+
+**解决方案**：ModelScope 的免费 API 层有速率限制。你可以：
+1. 在请求之间等待几秒
+2. 使用 DashScope（阿里云商业 API）获得更高限额
+3. 使用其他嵌入提供商（如 OpenAI）
+
 ### 重排序不工作
 
 **错误**：`Failed to create LLM reranker`
@@ -383,6 +405,7 @@ export OPENAI_EMBEDDING_MODEL=text-embedding-v3
 - [LangGraphGo RAG 文档](../../rag/README.md)
 - [检索器实现](../../rag/retriever/)
 - [向量存储选项](../../rag/store/)
+- [llms/qwen 包](../../llms/qwen/) - 可重用的 Qwen 嵌入器包
 
 ## 许可证
 

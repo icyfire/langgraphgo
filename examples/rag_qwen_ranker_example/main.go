@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/smallnest/langgraphgo/graph"
+	"github.com/smallnest/langgraphgo/llms/qwen"
 	"github.com/smallnest/langgraphgo/rag"
 	"github.com/smallnest/langgraphgo/rag/retriever"
 	"github.com/smallnest/langgraphgo/rag/store"
@@ -27,12 +29,6 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Initialize LLM
-	llm, err := openai.New()
-	if err != nil {
-		log.Fatalf("Failed to create LLM: %v", err)
-	}
-
 	// Initialize Qwen3-Embedding-4B for embeddings
 	// ModelScope API configuration
 	// You can use different embedding backends:
@@ -44,11 +40,6 @@ func main() {
 		embeddingBaseURL = "https://api-inference.modelscope.cn/v1"
 	}
 
-	embeddingModel := os.Getenv("OPENAI_EMBEDDING_MODEL")
-	if embeddingModel == "" {
-		embeddingModel = "Qwen/Qwen3-Embedding-4B" // ModelScope model
-	}
-
 	apiKey := os.Getenv("MODELSCOPE_API_KEY")
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY") // Fallback to OPENAI_API_KEY
@@ -58,23 +49,23 @@ func main() {
 		log.Fatal("Please set MODELSCOPE_API_KEY or OPENAI_API_KEY environment variable")
 	}
 
-	fmt.Printf("Using embedding model: %s\n", embeddingModel)
 	fmt.Printf("Using API endpoint: %s\n\n", embeddingBaseURL)
 
-	// llmForEmbeddings, err := openai.New(
-	// 	openai.WithEmbeddingModel(embeddingModel),
-	// 	openai.WithBaseURL(embeddingBaseURL),
-	// 	openai.WithToken(apiKey),
-	// )
-	// if err != nil {
-	// 	log.Fatalf("Failed to create LLM for embeddings: %v", err)
-	// }
-	// openaiEmbedder, err := embeddings.NewEmbedder(llmForEmbeddings)
-	// if err != nil {
-	// 	log.Fatalf("Failed to create embedder: %v", err)
-	// }
-	// embedder := rag.NewLangChainEmbedder(openaiEmbedder)
-	embedder := store.NewMockEmbedder(128)
+	// Initialize LLM for text generation and reranking
+	// Use a chat model for generation (not the reranker model)
+	llm, err := openai.New(
+		openai.WithModel("Qwen/Qwen2.5-7B-Instruct"), // Use a chat model for generation
+		openai.WithBaseURL(embeddingBaseURL),
+		openai.WithToken(apiKey),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create LLM: %v", err)
+	}
+
+	// Create Qwen embedder that supports encoding_format
+	// This is required for Qwen3-Embedding-4B on ModelScope
+	// The embedder automatically handles rate limiting with retry logic
+	embedder := qwen.NewEmbedder(embeddingBaseURL, apiKey, "Qwen/Qwen3-Embedding-4B")
 
 	fmt.Println("=== RAG with Qwen3-Embedding-4B Reranker Example ===")
 	fmt.Println()
@@ -131,11 +122,28 @@ func main() {
 	// Create in-memory vector store
 	vectorStore := store.NewInMemoryVectorStore(embedder)
 
-	// Add documents to the store
+	// Add documents to the store in batches to handle rate limiting
 	fmt.Println("Adding documents to vector store...")
-	err = vectorStore.Add(ctx, documents)
-	if err != nil {
-		log.Fatalf("Failed to add documents: %v", err)
+	// Process in batches to avoid overwhelming the API
+	batchSize := 2
+	for i := 0; i < len(documents); i += batchSize {
+		end := i + batchSize
+		if end > len(documents) {
+			end = len(documents)
+		}
+		batch := documents[i:end]
+
+		log.Printf("Adding batch %d/%d (%d documents)...", (i/batchSize)+1, (len(documents)+batchSize-1)/batchSize, len(batch))
+		err = vectorStore.Add(ctx, batch)
+		if err != nil {
+			log.Fatalf("Failed to add documents batch %d: %v", (i/batchSize)+1, err)
+		}
+
+		// Add delay between batches to avoid rate limiting
+		if end < len(documents) {
+			log.Println("Waiting 2 seconds to avoid rate limiting...")
+			time.Sleep(2 * time.Second)
+		}
 	}
 	fmt.Printf("Successfully added %d documents\n\n", len(documents))
 
@@ -204,19 +212,24 @@ func main() {
 		})
 		if err != nil {
 			log.Printf("Failed to process query: %v", err)
-			continue
-		}
-
-		if answer, ok := result["answer"].(string); ok {
-			fmt.Printf("\nAnswer:\n%s\n", answer)
-		}
-
-		if docs, ok := result["documents"].([]rag.RAGDocument); ok {
-			fmt.Printf("\nRetrieved %d documents:\n", len(docs))
-			for j, doc := range docs {
-				fmt.Printf("  [%d] %s\n", j+1, truncate(doc.Content, 100))
-				fmt.Printf("      Metadata: %v\n", doc.Metadata)
+		} else {
+			if answer, ok := result["answer"].(string); ok {
+				fmt.Printf("\nAnswer:\n%s\n", answer)
 			}
+
+			if docs, ok := result["documents"].([]rag.RAGDocument); ok {
+				fmt.Printf("\nRetrieved %d documents:\n", len(docs))
+				for j, doc := range docs {
+					fmt.Printf("  [%d] %s\n", j+1, truncate(doc.Content, 100))
+					fmt.Printf("      Metadata: %v\n", doc.Metadata)
+				}
+			}
+		}
+
+		// Add delay between queries to avoid rate limiting
+		if i < len(queries)-1 {
+			fmt.Println("\nWaiting 2 seconds before next query...")
+			time.Sleep(2 * time.Second)
 		}
 		fmt.Println()
 	}
@@ -274,8 +287,7 @@ func main() {
 	fmt.Println("5. Composite retriever combining both approaches")
 
 	fmt.Println("\nConfiguration Options:")
-	fmt.Println(`
-# Option 1: ModelScope (for Qwen3-Embedding-4B)
+	fmt.Println(`# Option 1: ModelScope (for Qwen3-Embedding-4B)
 export EMBEDDING_BASE_URL=https://api-inference.modelscope.cn/v1
 export MODELSCOPE_API_KEY=your-modelscope-api-key
 export OPENAI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
@@ -288,8 +300,7 @@ export OPENAI_EMBEDDING_MODEL=text-embedding-v3
 # Option 3: OpenAI
 export EMBEDDING_BASE_URL=https://api.openai.com/v1
 export OPENAI_API_KEY=your-openai-api-key
-export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-`)
+export OPENAI_EMBEDDING_MODEL=text-embedding-3-small`)
 
 	fmt.Println("\nFor more information, see:")
 	fmt.Println("- Qwen Documentation: https://qwen.readthedocs.io/")

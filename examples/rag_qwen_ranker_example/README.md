@@ -231,6 +231,15 @@ vectorRetriever := retriever.NewVectorStoreRetriever(
 The example includes a custom `RerankingRetriever` that combines vector search with LLM reranking:
 
 ```go
+import "github.com/smallnest/langgraphgo/llms/qwen"
+
+// Create Qwen embedder with encoding_format support
+embedder := qwen.NewEmbedder(
+    "https://api-inference.modelscope.cn/v1",
+    apiKey,
+    "Qwen/Qwen3-Embedding-4B",
+)
+
 type RerankingRetriever struct {
     vectorStore rag.VectorStore
     embedder    rag.Embedder
@@ -249,6 +258,8 @@ func (r *RerankingRetriever) RetrieveWithConfig(ctx context.Context, query strin
     return reranked, nil
 }
 ```
+
+**Note**: The Qwen embedder is now available as a reusable package at `github.com/smallnest/langgraphgo/llms/qwen`. You can use it in your own projects.
 
 ## Performance Considerations
 
@@ -347,6 +358,17 @@ echo $OPENAI_API_KEY
 export OPENAI_EMBEDDING_MODEL=text-embedding-v3
 ```
 
+**Error**: `encoding_format must be 'float' or 'base64'`
+
+**Solution**: The custom `QwenEmbedder` in this example handles this automatically by setting `encoding_format: "float"`. If you're implementing your own embedder, ensure you use one of these valid values.
+
+**Error**: `API returned status 429: We have to rate limit you`
+
+**Solution**: ModelScope's free API tier has rate limits. You can:
+1. Wait a few seconds between requests
+2. Use DashScope (Alibaba Cloud's commercial API) for higher limits
+3. Use a different embedding provider like OpenAI
+
 ### Reranking Not Working
 
 **Error**: `Failed to create LLM reranker`
@@ -384,6 +406,7 @@ export OPENAI_EMBEDDING_MODEL=text-embedding-v3
 - [LangGraphGo RAG Documentation](../../rag/README.md)
 - [Retriever Implementation](../../rag/retriever/)
 - [Vector Store Options](../../rag/store/)
+- [llms/qwen Package](../../llms/qwen/) - Reusable Qwen embedder package
 
 ## License
 
