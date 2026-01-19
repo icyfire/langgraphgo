@@ -90,7 +90,13 @@ func (cl *CheckpointListener[S]) OnRetrieverError(context.Context, error, string
 
 func (cl *CheckpointListener[S]) saveCheckpoint(ctx context.Context, nodeName string, state S) {
 	// Get current version from existing checkpoints
-	checkpoints, err := cl.store.List(ctx, cl.executionID)
+	var checkpoints []*store.Checkpoint
+	var err error
+	if cl.threadID != "" {
+		checkpoints, err = cl.store.ListByThread(ctx, cl.threadID)
+	} else {
+		checkpoints, err = cl.store.List(ctx, cl.executionID)
+	}
 	version := 1
 	if err == nil && len(checkpoints) > 0 {
 		// Get the latest version
@@ -99,11 +105,12 @@ func (cl *CheckpointListener[S]) saveCheckpoint(ctx context.Context, nodeName st
 	}
 
 	metadata := map[string]any{
-		"execution_id": cl.executionID,
-		"event":        "step",
+		"event": "step",
 	}
 	if cl.threadID != "" {
 		metadata["thread_id"] = cl.threadID
+	} else {
+		metadata["execution_id"] = cl.executionID
 	}
 
 	checkpoint := &store.Checkpoint{
