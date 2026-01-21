@@ -1,6 +1,23 @@
 {
-  "checkpoint_1185d1cd-f42d-4265-b19b-62a11afb2264": {
-    "id": "checkpoint_1185d1cd-f42d-4265-b19b-62a11afb2264",
+  "checkpoint_1c0aaff2-9854-42d6-b949-741f586a2fb6": {
+    "id": "checkpoint_1c0aaff2-9854-42d6-b949-741f586a2fb6",
+    "node_name": "step_1",
+    "state": {
+      "steps": [
+        "Start",
+        "Step 1 Completed"
+      ]
+    },
+    "metadata": {
+      "event": "step",
+      "execution_id": "exec_1768959622819043000",
+      "thread_id": "durable-job-1"
+    },
+    "timestamp": "2026-01-21T09:40:22.819383+08:00",
+    "version": 1
+  },
+  "checkpoint_22780b54-1036-4a13-8000-e24a28c99d73": {
+    "id": "checkpoint_22780b54-1036-4a13-8000-e24a28c99d73",
     "node_name": "step_3",
     "state": {
       "steps": [
@@ -12,31 +29,14 @@
     },
     "metadata": {
       "event": "step",
-      "execution_id": "exec_1768959253585150000",
+      "execution_id": "exec_1768959622819043000",
       "thread_id": "durable-job-1"
     },
-    "timestamp": "2026-01-21T09:34:14.588646+08:00",
+    "timestamp": "2026-01-21T09:40:23.821976+08:00",
     "version": 1
   },
-  "checkpoint_643e9d36-5313-4606-9076-2cc2ea92d899": {
-    "id": "checkpoint_643e9d36-5313-4606-9076-2cc2ea92d899",
-    "node_name": "step_1",
-    "state": {
-      "steps": [
-        "Start",
-        "Step 1 Completed"
-      ]
-    },
-    "metadata": {
-      "event": "step",
-      "execution_id": "exec_1768959253585150000",
-      "thread_id": "durable-job-1"
-    },
-    "timestamp": "2026-01-21T09:34:13.585545+08:00",
-    "version": 1
-  },
-  "checkpoint_654bcbf1-b3cb-49f9-9c6b-6a483d88d933": {
-    "id": "checkpoint_654bcbf1-b3cb-49f9-9c6b-6a483d88d933",
+  "checkpoint_8d9618c7-5fd5-412e-9ea0-45232be194d6": {
+    "id": "checkpoint_8d9618c7-5fd5-412e-9ea0-45232be194d6",
     "node_name": "step_2",
     "state": {
       "steps": [
@@ -47,10 +47,10 @@
     },
     "metadata": {
       "event": "step",
-      "execution_id": "exec_1768959253585150000",
+      "execution_id": "exec_1768959622819043000",
       "thread_id": "durable-job-1"
     },
-    "timestamp": "2026-01-21T09:34:14.087085+08:00",
+    "timestamp": "2026-01-21T09:40:23.320518+08:00",
     "version": 1
   }
 }

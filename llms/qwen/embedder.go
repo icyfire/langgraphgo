@@ -77,7 +77,7 @@ func (e *Embedder) EmbedDocuments(ctx context.Context, texts []string) ([][]floa
 	retryDelay := 2 * time.Second
 
 	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
 			log.Printf("Retry attempt %d/%d after %v delay", attempt, maxRetries, retryDelay)
 			select {

@@ -40,7 +40,7 @@ func (s *DiskStore) saveAll(cps map[string]*graph.Checkpoint) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.FilePath, data, 0644)
+	return os.WriteFile(s.FilePath, data, 0600)
 }
 
 func (s *DiskStore) Save(ctx context.Context, cp *graph.Checkpoint) error {
@@ -151,8 +151,14 @@ func main() {
 
 	// Step 1
 	g.AddNode("step_1", "step_1", func(ctx context.Context, state map[string]any) (map[string]any, error) {
-		// Return only the updated field (delta pattern)
-		return map[string]any{"steps": []string{"Step 1 Completed"}}, nil
+		steps, ok := state["steps"].([]string)
+		if !ok {
+			return nil, fmt.Errorf("steps key not found")
+		}
+		// Append new step to existing steps
+		steps = append(steps, "Step 1 Completed")
+		state["steps"] = steps
+		return state, nil
 	})
 
 	// Step 2 (Simulate Crash)
@@ -167,8 +173,13 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Return only the updated field (delta pattern)
-		return map[string]any{"steps": []string{"Step 2 Completed"}}, nil
+		steps, ok := state["steps"].([]string)
+		if !ok {
+			return nil, fmt.Errorf("steps key not found")
+		}
+		steps = append(steps, "Step 2 Completed")
+		state["steps"] = steps
+		return state, nil
 	})
 
 	// Step 3
@@ -176,8 +187,13 @@ func main() {
 		fmt.Println("Executing Step 3...")
 		time.Sleep(500 * time.Millisecond)
 
-		// Return only the updated field (delta pattern)
-		return map[string]any{"steps": []string{"Step 3 Completed"}}, nil
+		steps, ok := state["steps"].([]string)
+		if !ok {
+			return nil, fmt.Errorf("steps key not found")
+		}
+		steps = append(steps, "Step 3 Completed")
+		state["steps"] = steps
+		return state, nil
 	})
 
 	g.SetEntryPoint("step_1")
@@ -206,8 +222,22 @@ func main() {
 		} else if latest.NodeName == "step_2" {
 			nextNode = "step_3"
 		} else {
-			// Finished or unknown
-			fmt.Println("Job already finished or unknown state.")
+			// Finished - show the final result from checkpoint
+			stateMap, ok := latest.State.(map[string]any)
+			if ok {
+				// Normalize types after JSON unmarshaling
+				if stepsAny, ok := stateMap["steps"].([]any); ok {
+					steps := make([]string, len(stepsAny))
+					for i, v := range stepsAny {
+						s, _ := v.(string)
+						steps[i] = s
+					}
+					stateMap["steps"] = steps
+				}
+				fmt.Printf("Job already finished.\nFinal Result: %v\n", stateMap)
+			} else {
+				fmt.Println("Job already finished or unknown state.")
+			}
 			return
 		}
 
@@ -233,6 +263,20 @@ func main() {
 			// Unmarshal will give map[string]any.
 			// So the cast should be fine.
 			stateMap = latest.State.(map[string]any)
+		}
+
+		// Normalize types after JSON unmarshaling
+		// JSON unmarshal converts []string to []any
+		if stepsAny, ok := stateMap["steps"].([]any); ok {
+			steps := make([]string, len(stepsAny))
+			for i, v := range stepsAny {
+				s, ok := v.(string)
+				if !ok {
+					return
+				}
+				steps[i] = s
+			}
+			stateMap["steps"] = steps
 		}
 
 		res, err := runnable.InvokeWithConfig(ctx, stateMap, config)

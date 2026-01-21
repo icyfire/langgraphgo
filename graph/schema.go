@@ -70,9 +70,12 @@ func (s *StructSchema[S]) Update(current S, new S) (S, error) {
 // It uses reflection to merge non-zero fields from new into current.
 // This is a sensible default for most struct types.
 func DefaultStructMerge[S any](current S, new S) (S, error) {
-	// Use reflection to merge non-zero fields from new into current
-	currentVal := reflect.ValueOf(&current)
-	newVal := reflect.ValueOf(&new)
+	// Create a zero-initialized result of type S
+	resultType := reflect.TypeOf(current)
+	resultValue := reflect.New(resultType).Elem()
+
+	currentVal := reflect.ValueOf(current)
+	newVal := reflect.ValueOf(new)
 
 	// Check if S is a struct
 	if currentVal.Kind() != reflect.Struct {
@@ -80,16 +83,25 @@ func DefaultStructMerge[S any](current S, new S) (S, error) {
 		return new, nil
 	}
 
-	for i := 0; i < newVal.NumField(); i++ {
-		fieldNew := newVal.Field(i)
-		if !fieldNew.IsZero() {
-			fieldCurrent := currentVal.Field(i)
-			if fieldCurrent.CanSet() {
-				fieldCurrent.Set(fieldNew)
-			}
+	// Copy non-zero fields from current to result
+	for i := 0; i < currentVal.NumField(); i++ {
+		fieldCurrent := currentVal.Field(i)
+		resultField := resultValue.Field(i)
+		if !fieldCurrent.IsZero() && resultField.CanSet() {
+			resultField.Set(fieldCurrent)
 		}
 	}
-	return current, nil
+
+	// Copy non-zero fields from new to result (overwrites if non-zero)
+	for i := 0; i < newVal.NumField(); i++ {
+		fieldNew := newVal.Field(i)
+		resultField := resultValue.Field(i)
+		if !fieldNew.IsZero() && resultField.CanSet() {
+			resultField.Set(fieldNew)
+		}
+	}
+
+	return resultValue.Interface().(S), nil
 }
 
 // OverwriteStructMerge is a merge function that completely replaces the current state with the new state.
@@ -123,8 +135,12 @@ func (fm *FieldMerger[S]) Init() S {
 
 // Update merges the new state into the current state using registered field merge functions.
 func (fm *FieldMerger[S]) Update(current S, new S) (S, error) {
-	currentVal := reflect.ValueOf(&current)
-	newVal := reflect.ValueOf(&new)
+	// Create a zero-initialized result of type S
+	resultType := reflect.TypeOf(current)
+	resultValue := reflect.New(resultType).Elem()
+
+	currentVal := reflect.ValueOf(current)
+	newVal := reflect.ValueOf(new)
 
 	if currentVal.Kind() != reflect.Struct {
 		return new, fmt.Errorf("FieldMerger only works with struct types")
@@ -138,22 +154,25 @@ func (fm *FieldMerger[S]) Update(current S, new S) (S, error) {
 
 		currentFieldVal := currentVal.Field(i)
 		newFieldVal := newVal.Field(i)
+		resultFieldVal := resultValue.Field(i)
 
 		// Check if there's a custom merge function for this field
 		if mergeFn, ok := fm.FieldMergeFns[fieldName]; ok {
-			if currentFieldVal.CanSet() {
+			if resultFieldVal.CanSet() {
 				mergedVal := mergeFn(currentFieldVal, newFieldVal)
-				currentFieldVal.Set(mergedVal)
+				resultFieldVal.Set(mergedVal)
 			}
 		} else {
-			// Default: overwrite if new value is non-zero
-			if !newFieldVal.IsZero() && currentFieldVal.CanSet() {
-				currentFieldVal.Set(newFieldVal)
+			// Default: overwrite if new value is non-zero, otherwise keep current
+			if !newFieldVal.IsZero() && resultFieldVal.CanSet() {
+				resultFieldVal.Set(newFieldVal)
+			} else if !currentFieldVal.IsZero() && resultFieldVal.CanSet() {
+				resultFieldVal.Set(currentFieldVal)
 			}
 		}
 	}
 
-	return current, nil
+	return resultValue.Interface().(S), nil
 }
 
 // Common merge helpers for FieldMerger
@@ -275,6 +294,13 @@ func (s *MapSchema) Update(current, new map[string]any) (map[string]any, error) 
 		current = make(map[string]any)
 	}
 
+	// Check if current and new are the same map object
+	// This can happen when a node modifies its input state in-place and returns it
+	if sameValue(current, new) {
+		// They're the same object, so new already contains all the updates
+		return new, nil
+	}
+
 	// Create a copy of the current map to avoid mutating it directly
 	result := make(map[string]any, len(current))
 	maps.Copy(result, current)
@@ -286,22 +312,14 @@ func (s *MapSchema) Update(current, new map[string]any) (map[string]any, error) 
 			// Check if current and new values are the same reference
 			// This can happen when a node modifies its input state and returns it
 			if sameValue(currVal, v) {
-				// They're the same object - this means that current and new maps
-				// point to the same underlying hash table (node modified state in-place)
-				// Even if data is shared, we need to merge if contents differ
-				// to preserve previous steps
-				mergedVal, err := reducer(currVal, v)
-				if err != nil {
-					return nil, fmt.Errorf("failed to reduce key %s: %w", k, err)
-				}
-				result[k] = mergedVal
-			} else {
-				mergedVal, err := reducer(currVal, v)
-				if err != nil {
-					return nil, fmt.Errorf("failed to reduce key %s: %w", k, err)
-				}
-				result[k] = mergedVal
+				// They're the same object - skip reducer to avoid self-append
+				continue
 			}
+			mergedVal, err := reducer(currVal, v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to reduce key %s: %w", k, err)
+			}
+			result[k] = mergedVal
 		} else {
 			// Default: Overwrite
 			result[k] = v
