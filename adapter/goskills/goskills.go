@@ -97,8 +97,9 @@ type SkillTool struct {
 	description string
 	scriptMap   map[string]string
 	skillPath   string
-	config      *ToolConfig    // 工具配置
-	schema      map[string]any // 工具的 JSON schema
+	config      *ToolConfig            // 工具配置
+	schema      map[string]any         // 工具的 JSON schema
+	skill       *goskills.SkillPackage // 保留对 skill 包的引用以获取工具定义
 }
 
 var _ tools.Tool = &SkillTool{}
@@ -134,6 +135,48 @@ func (t *SkillTool) Schema() map[string]any {
 		}
 	}
 	return t.schema
+}
+
+// getToolDefinition 获取当前工具的定义
+func (t *SkillTool) getToolDefinition() *goskills.ToolDefinition {
+	if t.skill == nil || len(t.skill.Meta.Tools) == 0 {
+		return nil
+	}
+	for i := range t.skill.Meta.Tools {
+		if t.skill.Meta.Tools[i].Name == t.name {
+			return &t.skill.Meta.Tools[i]
+		}
+	}
+	return nil
+}
+
+// buildParamMapping 动态构建参数名到 CLI flag 的映射
+// 规则：将参数名转换为 kebab-case 并添加 "--" 前缀
+// 例如: "filePath" -> "--file-path", "quality" -> "--quality"
+func (t *SkillTool) buildParamMapping(toolDef *goskills.ToolDefinition) map[string]string {
+	if toolDef == nil || len(toolDef.Parameters) == 0 {
+		return nil
+	}
+
+	mapping := make(map[string]string)
+	for paramName := range toolDef.Parameters {
+		flag := toCLIFlag(paramName)
+		mapping[paramName] = flag
+	}
+	return mapping
+}
+
+// toCLIFlag 将参数名转换为 CLI flag 格式
+// 例如: "filePath" -> "--file-path", "quality" -> "--quality", "path" -> "--path"
+func toCLIFlag(paramName string) string {
+	var result []rune
+	for i, r := range paramName {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result = append(result, '-')
+		}
+		result = append(result, r)
+	}
+	return "--" + string(result)
 }
 
 func (t *SkillTool) MarshalJSON() ([]byte, error) {
@@ -260,28 +303,31 @@ func (t *SkillTool) Call(ctx context.Context, input string) (string, error) {
 				// 成功解析为命名参数，转换为命令行参数
 				var args []string
 
-				// 参数映射：将 SKILL.md 中的参数名转换为脚本参数名
-				paramMapping := map[string]string{
-					"topic":     "--topic",
-					"style":     "--style",
-					"pages":     "--pages",
-					"aspect":    "--aspect",
-					"path":      "--image",
-					"prompt":    "--prompt",
-					"ar":        "--ar",
-					"quality":   "--quality",
-					"directory": "--directory",
+				// 获取工具定义并动态构建参数映射
+				toolDef := t.getToolDefinition()
+				paramMapping := t.buildParamMapping(toolDef)
+
+				// 如果没有工具定义，使用原始参数名作为 flag（添加 -- 前缀）
+				if paramMapping == nil {
+					for key := range namedParams {
+						paramMapping = map[string]string{key: toCLIFlag(key)}
+					}
 				}
 
-				// 按照已知的顺序处理参数（或者按字母顺序保持一致性）
-				paramOrder := []string{"topic", "style", "pages", "aspect", "path", "prompt", "ar", "quality", "directory"}
-
-				for _, key := range paramOrder {
-					if value, ok := namedParams[key]; ok && value != nil {
-						if flag, ok := paramMapping[key]; ok {
-							args = append(args, flag)
-							args = append(args, fmt.Sprintf("%v", value))
+				// 构建命令行参数
+				for key, value := range namedParams {
+					if value != nil {
+						// 跳过 "args" 键，这是为了向后兼容旧的数组格式
+						if key == "args" {
+							continue
 						}
+						flag, ok := paramMapping[key]
+						if !ok {
+							// 如果映射中没有，动态生成
+							flag = toCLIFlag(key)
+						}
+						args = append(args, flag)
+						args = append(args, fmt.Sprintf("%v", value))
 					}
 				}
 
@@ -390,6 +436,7 @@ func SkillsToTools(skill *goskills.SkillPackage, opts ...SkillsToToolsOptions) (
 			skillPath:   skill.Path,
 			config:      config,
 			schema:      schema,
+			skill:       skill,
 		})
 	}
 
