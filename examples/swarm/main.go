@@ -24,26 +24,32 @@ func main() {
 	// Agent 1: Triage
 	workflow.AddNode("Triage", "Triage", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Triage] analyzing request...")
-		state["history"] = []string{"Triage reviewed request"}
-		state["intent"] = "research" // Simplified logic: always determine research needed
-		return state, nil
+		return map[string]any{
+				"history": []string{"Triage reviewed request"},
+				"intent":  "research", // Simplified logic: always determine research needed
+			},
+			nil
 	})
 
 	// Agent 2: Researcher
 	workflow.AddNode("Researcher", "Researcher", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Researcher] conducting research...")
-		state["history"] = []string{"Researcher gathered data"}
-		state["data"] = "Some facts found"
-		return state, nil
+		return map[string]any{
+				"history": []string{"Researcher gathered data"},
+				"data":    "Some facts found",
+			},
+			nil
 	})
 
 	// Agent 3: Writer
 	workflow.AddNode("Writer", "Writer", func(ctx context.Context, state map[string]any) (map[string]any, error) {
 		fmt.Println("[Writer] writing report...")
 		data, _ := state["data"].(string)
-		state["history"] = []string{"Writer created report"}
-		state["report"] = fmt.Sprintf("Report based on %s", data)
-		return state, nil
+		return map[string]any{
+				"history": []string{"Writer created report"},
+				"report":  fmt.Sprintf("Report based on %s", data),
+			},
+			nil
 	})
 
 	// Define Handoffs (Edges)
