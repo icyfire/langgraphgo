@@ -12,42 +12,50 @@ import (
 // This is different from Supervisor style where a central node routes.
 // Here, nodes themselves decide next step.
 
-func main() {
-	// Define the graph
-	workflow := graph.NewStateGraph[map[string]any]()
+// State defines the schema for the graph.
+type State struct {
+	History []string
+	Intent  string
+	Data    string
+	Report  string
+}
 
-	// Schema: shared state
-	schema := graph.NewMapSchema()
-	schema.RegisterReducer("history", graph.AppendReducer)
+func main() {
+	// Define the graph with typed State
+	workflow := graph.NewStateGraph[State]()
+
+	// Schema: shared state with field merger
+	// Use FieldMerger to handle specific merge logic (like append for History)
+	schema := graph.NewFieldMerger[State](State{})
+	schema.RegisterFieldMerge("History", graph.AppendSliceMerge)
 	workflow.SetSchema(schema)
 
 	// Agent 1: Triage
-	workflow.AddNode("Triage", "Triage", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+	workflow.AddNode("Triage", "Triage", func(ctx context.Context, state State) (State, error) {
 		fmt.Println("[Triage] analyzing request...")
-		return map[string]any{
-				"history": []string{"Triage reviewed request"},
-				"intent":  "research", // Simplified logic: always determine research needed
+		return State{
+				History: []string{"Triage reviewed request"},
+				Intent:  "research", // Simplified logic: always determine research needed
 			},
 			nil
 	})
 
 	// Agent 2: Researcher
-	workflow.AddNode("Researcher", "Researcher", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+	workflow.AddNode("Researcher", "Researcher", func(ctx context.Context, state State) (State, error) {
 		fmt.Println("[Researcher] conducting research...")
-		return map[string]any{
-				"history": []string{"Researcher gathered data"},
-				"data":    "Some facts found",
+		return State{
+				History: []string{"Researcher gathered data"},
+				Data:    "Some facts found",
 			},
 			nil
 	})
 
 	// Agent 3: Writer
-	workflow.AddNode("Writer", "Writer", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+	workflow.AddNode("Writer", "Writer", func(ctx context.Context, state State) (State, error) {
 		fmt.Println("[Writer] writing report...")
-		data, _ := state["data"].(string)
-		return map[string]any{
-				"history": []string{"Writer created report"},
-				"report":  fmt.Sprintf("Report based on %s", data),
+		return State{
+				History: []string{"Writer created report"},
+				Report:  fmt.Sprintf("Report based on %s", state.Data),
 			},
 			nil
 	})
@@ -56,12 +64,11 @@ func main() {
 	workflow.SetEntryPoint("Triage")
 
 	// Triage decides where to go
-	workflow.AddConditionalEdge("Triage", func(ctx context.Context, state map[string]any) string {
-		intent, _ := state["intent"].(string)
-		if intent == "research" {
+	workflow.AddConditionalEdge("Triage", func(ctx context.Context, state State) string {
+		if state.Intent == "research" {
 			return "Researcher"
 		}
-		if intent == "write" {
+		if state.Intent == "write" {
 			return "Writer"
 		}
 		return graph.END
@@ -81,8 +88,8 @@ func main() {
 
 	// Execute
 	fmt.Println("---" + " Starting Swarm ---")
-	initialState := map[string]any{
-		"history": []string{},
+	initialState := State{
+		History: []string{},
 	}
 
 	result, err := app.Invoke(context.Background(), initialState)
@@ -90,5 +97,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Final State: %v\n", result)
+	fmt.Printf("Final State: %+v\n", result)
 }
