@@ -97,13 +97,22 @@ func main() {
 	model, _ := openai.New()
 
 	// 1. Create Graph
-	g := graph.NewMessageGraph()
+	g := graph.NewStateGraph[map[string]any]()
 
 	// 2. Add Nodes
-	g.AddNode("generate", func(ctx context.Context, state any) (any, error) {
-		messages := state.([]llms.MessageContent)
-		response, _ := model.GenerateContent(ctx, messages)
-		return append(messages, llms.TextParts("ai", response.Choices[0].Content)), nil
+	g.AddNode("generate", "generate", func(ctx context.Context, state map[string]any) (map[string]any, error) {
+		input, ok := state["input"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid input")
+		}
+
+		response, err := model.Call(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+
+		state["output"] = response
+		return state, nil
 	})
 
 	// 3. Define Edges
@@ -114,11 +123,11 @@ func main() {
 	runnable, _ := g.Compile()
 
 	// 5. Invoke
-	initialState := []llms.MessageContent{
-		llms.TextParts("human", "Hello, LangGraphGo!"),
+	initialState := map[string]any{
+		"input": "Hello, LangGraphGo!",
 	}
 	result, _ := runnable.Invoke(ctx, initialState)
-	
+
 	fmt.Println(result)
 }
 ```
